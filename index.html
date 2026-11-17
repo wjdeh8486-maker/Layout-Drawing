@@ -193,6 +193,7 @@ td:last-child,th:last-child{text-align:right}
  <div class="cmpbar">
   <b>전후 비교</b>
   이전 <select id="cA"></select> → 이후 <select id="cB"></select>
+  <select id="cTol" title="이 거리보다 적게 움직인 설비는 '이동'으로 세지 않음"><option value="0.1">이동 기준 0.1m</option><option value="0.3">이동 기준 0.3m</option><option value="0.5">이동 기준 0.5m</option><option value="1">이동 기준 1m</option></select>
   <button id="cSide" class="on">나란히</button><button id="cOver">겹쳐보기</button>
   <span style="flex:1"></span>
   <button id="cPng">이미지 저장</button><button id="cPpt" style="background:#C43E1C;color:#fff;border-color:#C43E1C">PPT 다운로드</button><button id="cCsv">변경내역 CSV</button><button onclick="closeM('mCmp')">닫기</button>
@@ -1069,22 +1070,38 @@ function fillCmpSel(){
  });
 }
 const ctr = e=>[e.x+e.w/2, e.y+e.h/2];
+// [변경] 같은 설비 찾기: ① 설비 고유 ID(복사본 저장 시 유지) → ② 종류+호기(양쪽에 하나씩만 있을 때) / 이동 기준 미만의 미세 차이·장소 이름만 바뀐 것은 '이동'으로 세지 않음
+let cmpTol = (()=>{ try{ return parseFloat(localStorage.getItem('ntl_layout_cmptol'))||0.3; }catch(e){ return 0.3; } })();
+function dupNos(L){ const c={}; L.items.filter(i=>i.kind==='eq').forEach(e=>{ const k=eqName(e); c[k]=(c[k]||0)+1; }); return Object.entries(c).filter(([,n])=>n>1).map(([k,n])=>`${k}×${n}`); }
 function diffLayouts(A, B){
- const key = e=>e.type+'#'+e.no, ea = A.items.filter(i=>i.kind==='eq'), eb = B.items.filter(i=>i.kind==='eq');
- const mA = new Map(ea.map(e=>[key(e),e])), mB = new Map(eb.map(e=>[key(e),e]));
- const rows = []; let same = 0;
+ const ea = A.items.filter(i=>i.kind==='eq'), eb = B.items.filter(i=>i.kind==='eq');
+ const pair = new Map(), usedA = new Set();
+ const byIdA = new Map(ea.map(e=>[e.id,e]));
+ eb.forEach(b=>{ const a = byIdA.get(b.id); if(a && a.type===b.type){ pair.set(b,a); usedA.add(a); } });
+ const key = e=>e.type+'#'+e.no, cnt1 = L=>{ const m={}; L.forEach(e=>{ m[key(e)]=(m[key(e)]||0)+1; }); return m; };
+ const ra = ea.filter(a=>!usedA.has(a)), rb = eb.filter(b=>!pair.has(b)), ca = cnt1(ra), cb = cnt1(rb);
+ rb.forEach(b=>{ if(cb[key(b)]!==1 || ca[key(b)]!==1) return; const a = ra.find(x=>key(x)===key(b)); if(a){ pair.set(b,a); usedA.add(a); } });
+ // 종류+호기가 중복이면 같은 종류 중 가장 가까운 것끼리
+ rb.filter(b=>!pair.has(b)).forEach(b=>{ let best=null, bd=1e9; const [bx,by]=ctr(b);
+  ea.filter(a=>!usedA.has(a) && a.type===b.type && String(a.no)===String(b.no)).forEach(a=>{ const [ax,ay]=ctr(a), d=Math.hypot(ax-bx,ay-by); if(d<bd){ bd=d; best=a; } });
+  if(best){ pair.set(b,best); usedA.add(best); } });
+ // ④ 남은 것: 같은 종류끼리 가장 가까운 순서로 짝 (호기 번호가 바뀌었거나 겹친 경우 — 실제로 안 움직였으면 '동일')
+ const la = ea.filter(x=>!usedA.has(x)), lb = eb.filter(x=>!pair.has(x)), cand = [];
+ lb.forEach(b=>{ const [bx,by]=ctr(b); la.forEach(a=>{ if(a.type!==b.type) return; const [ax,ay]=ctr(a); cand.push([Math.hypot(ax-bx,ay-by), a, b]); }); });
+ cand.sort((x,y)=>x[0]-y[0]).forEach(([d,a,b])=>{ if(usedA.has(a)||pair.has(b)) return; pair.set(b,a); usedA.add(a); });
+ const rows = []; let same = 0, micro = 0, renum = 0;
  eb.forEach(b=>{
-  const a = mA.get(key(b));
+  const a = pair.get(b);
   if(!a){ rows.push({k:'신규', b}); return; }
-  const [ax,ay]=ctr(a), [bx,by]=ctr(b), dist = Math.hypot(bx-ax, by-ay), za = zoneOfIn(A,a), zb = zoneOfIn(B,b);
-  if(dist>0.05 || (a.rot||0)!==(b.rot||0) || za!==zb) rows.push({k:'이동', a, b, dist, za, zb});
-  else same++;
+  const [ax,ay]=ctr(a), [bx,by]=ctr(b), dist = Math.hypot(bx-ax, by-ay), za = zoneOfIn(A,a), zb = zoneOfIn(B,b), rot = (a.rot||0)!==(b.rot||0);
+  if(dist>=cmpTol || rot) rows.push({k:'이동', a, b, dist, za, zb});
+  else { same++; if(dist>0.05) micro++; if(String(a.no)!==String(b.no)) renum++; }
  });
- ea.forEach(a=>{ if(!mB.has(key(a))) rows.push({k:'제거', a}); });
+ ea.forEach(a=>{ if(!usedA.has(a)) rows.push({k:'제거', a}); });
  const ord = {'이동':0,'신규':1,'제거':2};
  rows.sort((x,y)=>ord[x.k]-ord[y.k] || eqName(x.b||x.a).localeCompare(eqName(y.b||y.a)));
  const types = Object.keys(TYPES).map(k=>({k, a:ea.filter(e=>e.type===k).length, b:eb.filter(e=>e.type===k).length})).filter(t=>t.a||t.b);
- return {rows, same, types, na:ea.length, nb:eb.length};
+ return {rows, same, micro, renum, types, na:ea.length, nb:eb.length, dupA:dupNos(A), dupB:dupNos(B)};
 }
 const KC = {'이동':'#f97316','신규':'#16a34a','제거':'#dc2626'};
 const pos = e=>{ const [x,y]=ctr(e); return `(${r1(x)}, ${r1(y)})`; };
@@ -1107,7 +1124,8 @@ function renderCmp(){
  }else{
   $('cmpView').innerHTML = `<div><b>겹쳐보기 · 회색 점선 = 이전 위치, 빨간 화살표 = 이동 (같은 공장 도면끼리 비교할 때 사용)</b>${staticSvg(B,{marks:mk.over, arrows:mk.arrows}).svg}</div>`;
  }
- let h = `<div style="margin:4px 0 8px"><b>요약</b> — 이전 ${df.na}대 → 이후 ${df.nb}대 · 위치 동일 ${df.same} · <span class="tag" style="background:${KC['이동']}">이동 ${cnt(df,'이동')}</span> <span class="tag" style="background:${KC['신규']}">신규 ${cnt(df,'신규')}</span> <span class="tag" style="background:${KC['제거']}">제거 ${cnt(df,'제거')}</span></div>`;
+ let h = `<div style="margin:4px 0 8px"><b>요약</b> — 이전 ${df.na}대 → 이후 ${df.nb}대 · 위치 동일 ${df.same} · <span class="tag" style="background:${KC['이동']}">이동 ${cnt(df,'이동')}</span> <span class="tag" style="background:${KC['신규']}">신규 ${cnt(df,'신규')}</span> <span class="tag" style="background:${KC['제거']}">제거 ${cnt(df,'제거')}</span>${df.micro?` <span class="empty">· ${cmpTol}m 미만 미세 차이 ${df.micro}대는 이동으로 세지 않음</span>`:''}${df.renum?` <span class="empty">· 자리는 같고 호기 번호만 바뀐 설비 ${df.renum}대</span>`:''}</div>`
+  + ((df.dupA.length||df.dupB.length) ? `<div style="color:#b45309;margin:-4px 0 8px">⚠ 같은 호기 번호가 2대 이상 있습니다 — ${[...df.dupA.map(x=>'이전 '+x), ...df.dupB.map(x=>'이후 '+x)].map(esc).join(', ')} · 호기 번호를 고치면 비교가 더 정확해집니다</div>` : '');
  if(df.types.length){
   h += '<table><tr><th>설비 종류</th>' + df.types.map(t=>`<th>${TYPES[t.k].label}</th>`).join('') + '</tr>';
   h += '<tr><td>이전</td>' + df.types.map(t=>`<td>${t.a}</td>`).join('') + '</tr><tr><td>이후</td>' + df.types.map(t=>`<td>${t.b}</td>`).join('') + '</tr>';
@@ -1116,7 +1134,7 @@ function renderCmp(){
  if(df.rows.length){
   h += '<table style="margin-top:10px"><tr><th>구분</th><th>설비</th><th>이전 장소 (위치 m)</th><th>이후 장소 (위치 m)</th><th>비고</th></tr>';
   df.rows.forEach(r=>{
-   const note = r.k==='이동' ? [r.dist>0.05?`${r1(r.dist)}m 이동`:'', (r.a.rot||0)!==(r.b.rot||0)?`회전 ${r.a.rot||0}°→${r.b.rot||0}°`:''].filter(Boolean).join(', ') : '';
+   const note = r.k==='이동' ? [r.dist>0.05?`${r1(r.dist)}m 이동`:'', (r.a.rot||0)!==(r.b.rot||0)?`회전 ${r.a.rot||0}°→${r.b.rot||0}°`:'', String(r.a.no)!==String(r.b.no)?`호기 ${r.a.no}→${r.b.no}`:''].filter(Boolean).join(', ') : '';
    h += `<tr><td><span class="tag" style="background:${KC[r.k]}">${r.k}</span></td><td>${esc(eqName(r.b||r.a))}</td>
     <td>${r.a?esc(zoneOfIn(A,r.a))+' '+pos(r.a):'-'}</td><td>${r.b?esc(zoneOfIn(B,r.b))+' '+pos(r.b):'-'}</td><td>${note}</td></tr>`;
   });
@@ -1129,6 +1147,8 @@ $('bCmp').onclick = ()=>{
  fillCmpSel(); $('mCmp').classList.add('on'); renderCmp();
 };
 $('cA').onchange = $('cB').onchange = renderCmp;
+$('cTol').value = String(cmpTol); if(!$('cTol').value) $('cTol').value='0.3';
+$('cTol').onchange = e=>{ cmpTol = parseFloat(e.target.value)||0.3; try{ localStorage.setItem('ntl_layout_cmptol', cmpTol); }catch(_){} renderCmp(); };
 $('cSide').onclick = ()=>{ cmpMode='side'; $('cSide').classList.add('on'); $('cOver').classList.remove('on'); renderCmp(); };
 $('cOver').onclick = ()=>{ cmpMode='over'; $('cOver').classList.add('on'); $('cSide').classList.remove('on'); renderCmp(); };
 $('cCsv').onclick = ()=>{
