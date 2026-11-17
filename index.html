@@ -575,7 +575,8 @@ function renderProp(){
  P.innerHTML = h;
  const bind = (id, fn) => { const el=$(id); if(!el) return; el.onfocus=()=>pushUndo(); el.oninput = ()=>{ fn(el.value); render(); renderSummary(); save(); }; };
  bind('pName', v=>i.name=v);
- bind('pNo', v=>i.no=parseInt(v)||0);
+ bind('pNo', v=>{ i.no=parseInt(v)||0; noWarn(i); });
+ noWarn(i);
  bind('pW', v=>{ const n=parseFloat(v); if(n>0){ if(i.kind==='door'){ const cx=i.x+i.w/2, cy=i.y+i.h/2; i.w=n; i.h=doorDepth(i); i.x=cx-i.w/2; i.y=cy-i.h/2; if(snap) snapDoor(i); } else i.w=n; } });
  bind('pH', v=>{ const n=parseFloat(v); if(n>0) i.h=n; });
  bind('pX', v=>{ const n=parseFloat(v); if(!isNaN(n)) i.x=n; });
@@ -650,12 +651,18 @@ function zoneOfIn(data, e){
  const zs = data.items.filter(z=>z.kind==='zone' && cx>=z.x && cx<=z.x+z.w && cy>=z.y && cy<=z.y+z.h);
  return zs.length ? zs[zs.length-1].name : '미지정';
 }
+// [추가] 호기 = 구매 시 정해진 고유 번호 → 같은 종류에 같은 호기가 있으면 경고
+function noWarn(i){ const el=$('pNo'); if(!el || i.kind!=='eq') return; let w=$('pNoWarn');
+ const dup = D.items.some(v=>v!==i && v.kind==='eq' && v.type===i.type && String(v.no)===String(i.no));
+ if(!w){ w=document.createElement('div'); w.id='pNoWarn'; w.style.cssText='color:#dc2626;font-size:11px;margin-top:2px'; el.insertAdjacentElement('afterend', w); }
+ w.textContent = dup ? `⚠ 같은 ${TYPES[i.type]?.label||i.type} ${i.no}호기가 이미 있습니다 (구매 시 정해진 호기로 입력)` : ''; }
 function renderSummary(){
  const eqs = D.items.filter(i=>i.kind==='eq');
  if(!eqs.length){ $('summary').innerHTML='<div class="empty">등록된 설비 없음</div>'; return; }
  let h = '<table><tr><th>종류</th><th>대수</th></tr>';
  Object.entries(TYPES).forEach(([k,t])=>{ const n=eqs.filter(e=>e.type===k).length; if(n) h+=`<tr><td><i style="display:inline-block;width:9px;height:9px;background:${t.color};border-radius:2px"></i> ${t.label}</td><td>${n}</td></tr>`; });
  h += `<tr><th>합계</th><th>${eqs.length}</th></tr>`;
+ const dps = dupNos(D); if(dps.length) h += `<tr><td colspan="2" style="color:#dc2626;text-align:left">⚠ 호기 중복: ${dps.map(esc).join(', ')}</td></tr>`;
  const nd = D.items.filter(i=>i.kind==='door').length; if(nd) h += `<tr><td>문·출입구</td><td>${nd}</td></tr>`;
  h += `</table>`;
  const byZ = {};
@@ -1074,21 +1081,18 @@ const ctr = e=>[e.x+e.w/2, e.y+e.h/2];
 let cmpTol = (()=>{ try{ return parseFloat(localStorage.getItem('ntl_layout_cmptol'))||0.3; }catch(e){ return 0.3; } })();
 function dupNos(L){ const c={}; L.items.filter(i=>i.kind==='eq').forEach(e=>{ const k=eqName(e); c[k]=(c[k]||0)+1; }); return Object.entries(c).filter(([,n])=>n>1).map(([k,n])=>`${k}×${n}`); }
 function diffLayouts(A, B){
+ // [변경] 호기는 구매 시 정해진 설비 고유 번호 → ① 종류+호기가 양쪽에 하나씩이면 같은 설비 ② 남은 것은 설비 ID(복사본 저장 시 유지)
+ //        ③ 종류+호기가 중복된 것(입력 실수)만 같은 종류끼리 가까운 것과 짝 / 그 밖은 신규·제거
  const ea = A.items.filter(i=>i.kind==='eq'), eb = B.items.filter(i=>i.kind==='eq');
- const pair = new Map(), usedA = new Set();
- const byIdA = new Map(ea.map(e=>[e.id,e]));
- eb.forEach(b=>{ const a = byIdA.get(b.id); if(a && a.type===b.type){ pair.set(b,a); usedA.add(a); } });
- const key = e=>e.type+'#'+e.no, cnt1 = L=>{ const m={}; L.forEach(e=>{ m[key(e)]=(m[key(e)]||0)+1; }); return m; };
- const ra = ea.filter(a=>!usedA.has(a)), rb = eb.filter(b=>!pair.has(b)), ca = cnt1(ra), cb = cnt1(rb);
- rb.forEach(b=>{ if(cb[key(b)]!==1 || ca[key(b)]!==1) return; const a = ra.find(x=>key(x)===key(b)); if(a){ pair.set(b,a); usedA.add(a); } });
- // 종류+호기가 중복이면 같은 종류 중 가장 가까운 것끼리
- rb.filter(b=>!pair.has(b)).forEach(b=>{ let best=null, bd=1e9; const [bx,by]=ctr(b);
-  ea.filter(a=>!usedA.has(a) && a.type===b.type && String(a.no)===String(b.no)).forEach(a=>{ const [ax,ay]=ctr(a), d=Math.hypot(ax-bx,ay-by); if(d<bd){ bd=d; best=a; } });
-  if(best){ pair.set(b,best); usedA.add(best); } });
- // ④ 남은 것: 같은 종류끼리 가장 가까운 순서로 짝 (호기 번호가 바뀌었거나 겹친 경우 — 실제로 안 움직였으면 '동일')
- const la = ea.filter(x=>!usedA.has(x)), lb = eb.filter(x=>!pair.has(x)), cand = [];
- lb.forEach(b=>{ const [bx,by]=ctr(b); la.forEach(a=>{ if(a.type!==b.type) return; const [ax,ay]=ctr(a); cand.push([Math.hypot(ax-bx,ay-by), a, b]); }); });
- cand.sort((x,y)=>x[0]-y[0]).forEach(([d,a,b])=>{ if(usedA.has(a)||pair.has(b)) return; pair.set(b,a); usedA.add(a); });
+ const key = e=>e.type+'#'+e.no, cntK = L=>{ const m={}; L.forEach(e=>{ m[key(e)]=(m[key(e)]||0)+1; }); return m; };
+ const kA = cntK(ea), kB = cntK(eb), pair = new Map(), usedA = new Set();
+ eb.forEach(b=>{ if(kA[key(b)]===1 && kB[key(b)]===1){ const a = ea.find(x=>key(x)===key(b)); pair.set(b,a); usedA.add(a); } });
+ const byIdA = new Map(ea.filter(a=>!usedA.has(a)).map(e=>[e.id,e]));
+ eb.forEach(b=>{ if(pair.has(b)) return; const a = byIdA.get(b.id); if(a && !usedA.has(a) && a.type===b.type && (kA[key(a)]>1 || kB[key(b)]>1 || key(a)===key(b))){ pair.set(b,a); usedA.add(a); } });
+ const near = (ok)=>{ const cand=[]; eb.filter(b=>!pair.has(b)).forEach(b=>{ const [bx,by]=ctr(b); ea.filter(a=>!usedA.has(a)).forEach(a=>{ if(!ok(a,b)) return; const [ax,ay]=ctr(a); cand.push([Math.hypot(ax-bx,ay-by),a,b]); }); });
+  cand.sort((x,y)=>x[0]-y[0]).forEach(([d,a,b])=>{ if(usedA.has(a)||pair.has(b)) return; pair.set(b,a); usedA.add(a); }); };
+ near((a,b)=>key(a)===key(b));                                              // 같은 호기가 여러 대 → 가까운 것끼리
+ near((a,b)=>a.type===b.type && (kA[key(a)]>1 || kB[key(b)]>1));           // 중복 번호로 잘못 들어간 설비만 다른 번호와 짝
  const rows = []; let same = 0, micro = 0, renum = 0;
  eb.forEach(b=>{
   const a = pair.get(b);
@@ -1124,7 +1128,7 @@ function renderCmp(){
  }else{
   $('cmpView').innerHTML = `<div><b>겹쳐보기 · 회색 점선 = 이전 위치, 빨간 화살표 = 이동 (같은 공장 도면끼리 비교할 때 사용)</b>${staticSvg(B,{marks:mk.over, arrows:mk.arrows}).svg}</div>`;
  }
- let h = `<div style="margin:4px 0 8px"><b>요약</b> — 이전 ${df.na}대 → 이후 ${df.nb}대 · 위치 동일 ${df.same} · <span class="tag" style="background:${KC['이동']}">이동 ${cnt(df,'이동')}</span> <span class="tag" style="background:${KC['신규']}">신규 ${cnt(df,'신규')}</span> <span class="tag" style="background:${KC['제거']}">제거 ${cnt(df,'제거')}</span>${df.micro?` <span class="empty">· ${cmpTol}m 미만 미세 차이 ${df.micro}대는 이동으로 세지 않음</span>`:''}${df.renum?` <span class="empty">· 자리는 같고 호기 번호만 바뀐 설비 ${df.renum}대</span>`:''}</div>`
+ let h = `<div style="margin:4px 0 8px"><b>요약</b> — 이전 ${df.na}대 → 이후 ${df.nb}대 · 위치 동일 ${df.same} · <span class="tag" style="background:${KC['이동']}">이동 ${cnt(df,'이동')}</span> <span class="tag" style="background:${KC['신규']}">신규 ${cnt(df,'신규')}</span> <span class="tag" style="background:${KC['제거']}">제거 ${cnt(df,'제거')}</span>${df.micro?` <span class="empty">· ${cmpTol}m 미만 미세 차이 ${df.micro}대는 이동으로 세지 않음</span>`:''}${df.renum?` <span class="empty">· 중복 번호 설비 ${df.renum}대는 자리가 같아 동일로 봄</span>`:''}</div>`
   + ((df.dupA.length||df.dupB.length) ? `<div style="color:#b45309;margin:-4px 0 8px">⚠ 같은 호기 번호가 2대 이상 있습니다 — ${[...df.dupA.map(x=>'이전 '+x), ...df.dupB.map(x=>'이후 '+x)].map(esc).join(', ')} · 호기 번호를 고치면 비교가 더 정확해집니다</div>` : '');
  if(df.types.length){
   h += '<table><tr><th>설비 종류</th>' + df.types.map(t=>`<th>${TYPES[t.k].label}</th>`).join('') + '</tr>';
