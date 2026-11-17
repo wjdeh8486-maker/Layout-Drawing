@@ -1,4 +1,4 @@
-# Layout-Drawing<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
@@ -45,6 +45,22 @@ td:last-child,th:last-child{text-align:right}
 .modal textarea{width:100%;height:260px;font-family:monospace;font-size:12px}
 .modal img{max-width:100%;border:1px solid #e2e8f0}
 .modal .btns{display:flex;gap:6px;justify-content:flex-end;margin-top:10px}
+#stat{font-size:12px;color:#cbd5e1;margin-left:6px}
+#stat b{color:#fbbf24;font-weight:normal}
+.cmpbox{width:96vw!important;height:92vh;max-height:none!important;display:flex;flex-direction:column;gap:8px}
+.cmpbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.cmpbar select{font:inherit;padding:5px;border:1px solid #cbd5e1;border-radius:4px;max-width:220px}
+.cmpbar .on{background:#1e3a5f;color:#fff;border-color:#1e3a5f}
+#cmpView{flex:1;min-height:260px;display:flex;gap:10px}
+#cmpView>div{flex:1;display:flex;flex-direction:column;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;min-width:0}
+#cmpView>div>b{padding:5px 8px;background:#f1f5f9;font-size:13px}
+#cmpView svg{flex:1;width:100%;min-height:0}
+#cmpDiff{max-height:32vh;overflow:auto;font-size:12px}
+#cmpDiff table td,#cmpDiff table th{text-align:left;white-space:nowrap}
+.tag{display:inline-block;padding:1px 6px;border-radius:3px;color:#fff;font-size:11px}
+#lsTbl td{vertical-align:middle}
+#lsTbl tr.cur td{background:#fff7ed}
+@media (max-width:900px){ #cmpView{flex-direction:column} }
 #toast{position:fixed;left:50%;top:60px;transform:translateX(-50%);background:#1e293b;color:#fff;padding:7px 14px;border-radius:6px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:20}
 #toast.on{opacity:.92}
 /* 모바일·태블릿 */
@@ -79,7 +95,11 @@ td:last-child,th:last-child{text-align:right}
  <button id="bPrint">인쇄</button>
  <button id="bExport">내보내기</button>
  <button id="bImport">불러오기</button>
- <button id="bNew">새 도면</button>
+ <span class="sep"></span>
+ <button id="bSave" title="Ctrl+S">저장</button>
+ <button id="bList">도면 목록</button>
+ <button id="bCmp">전후 비교</button>
+ <span id="stat"></span>
 </header>
 
 <aside id="left">
@@ -128,6 +148,25 @@ td:last-child,th:last-child{text-align:right}
  <b id="cfMsg"></b>
  <div class="btns"><button id="cfYes">확인</button><button onclick="closeM('mConfirm')">취소</button></div>
 </div></div>
+<div class="modal" id="mList"><div>
+ <b>도면 목록</b>
+ <p class="empty" id="lsMode"></p>
+ <div class="prop"><label>현재 도면 이름</label><input id="lsName"></div>
+ <div class="btns" style="justify-content:flex-start"><button id="lsSave">저장</button><button id="lsSaveNew">새 도면으로 저장(복사본)</button><button id="bNew">새 도면 시작</button></div>
+ <table id="lsTbl" style="margin-top:12px"></table>
+ <div class="btns"><button onclick="closeM('mList')">닫기</button></div>
+</div></div>
+<div class="modal" id="mCmp"><div class="cmpbox">
+ <div class="cmpbar">
+  <b>전후 비교</b>
+  이전 <select id="cA"></select> → 이후 <select id="cB"></select>
+  <button id="cSide" class="on">나란히</button><button id="cOver">겹쳐보기</button>
+  <span style="flex:1"></span>
+  <button id="cPng">이미지 저장</button><button id="cCsv">변경내역 CSV</button><button onclick="closeM('mCmp')">닫기</button>
+ </div>
+ <div id="cmpView"></div>
+ <div id="cmpDiff"></div>
+</div></div>
 <div id="toast"></div>
 
 <script>
@@ -136,8 +175,11 @@ const S = 40;               // 1m = 40px (world 단위)
 const KEY = 'ntl_layout_v1';
 const TYPES = {
  MCT:      {cat:'mach', label:'MCT',        w:2.5, h:2.2, color:'#3b82f6'},
+ BIGMCT:   {cat:'mach', label:'대형 MCT',   w:4.5, h:3.5, color:'#1d4ed8'},
  HORI:     {cat:'mach', label:'호리젠탈',   w:3.5, h:3.0, color:'#6366f1'},
  LATHE:    {cat:'mach', label:'선반',       w:3.0, h:1.8, color:'#f59e0b'},
+ BIGLATHE: {cat:'mach', label:'대형선반',   w:6.0, h:2.5, color:'#ca8a04'},
+ VTL:      {cat:'mach', label:'수직선반',   w:3.5, h:3.5, color:'#ea580c'},
  CNC:      {cat:'mach', label:'CNC',        w:2.5, h:2.0, color:'#10b981'},
  MILL:     {cat:'mach', label:'밀링',       w:2.0, h:1.8, color:'#8b5cf6'},
  CMM:      {cat:'insp', label:'3차원측정기', w:2.0, h:3.0, color:'#ef4444'},
@@ -153,6 +195,28 @@ const ART = {
   <rect x="6" y="19.6" width="9" height="2.2" fill="#94a3b8" ${ST}/><path d="M7 19.6v2.2M8.5 19.6v2.2M10 19.6v2.2M11.5 19.6v2.2M13 19.6v2.2" ${ST}/>
   <rect x="20.4" y="3.5" width="4.2" height="8" rx=".4" fill="#334155"/><rect x="21" y="4.2" width="3" height="2.6" fill="${c}"/>
   <circle cx="21.7" cy="8.6" r=".45" fill="#fbbf24"/><circle cx="23.2" cy="8.6" r=".45" fill="#ef4444"/><rect x="21" y="9.7" width="3" height="1.1" fill="#64748b"/>`],
+ BIGMCT: [45,35, c=>`<rect x="1" y="3" width="36" height="30" rx="1" fill="#e2e8f0" ${ST}/>
+  <rect x="4" y=".6" width="30" height="2.8" rx=".4" fill="#bfdbfe" ${ST}/><path d="M14 .6v2.8M24 .6v2.8" ${ST}/>
+  <rect x="5" y="9" width="28" height="13" fill="#cbd5e1" ${ST}/><path d="M5 12.2h28M5 15.5h28M5 18.8h28" stroke="#94a3b8" stroke-width=".3"/>
+  <rect x="14.5" y="11" width="9" height="9" rx=".6" fill="#64748b" ${ST}/><circle cx="19" cy="15.5" r="2.8" fill="#334155"/><circle cx="19" cy="15.5" r="1.1" fill="${c}"/>
+  <rect x="6" y="25" width="26" height="6" fill="#94a3b8" ${ST}/><path d="M8 25v6M11 25v6M14 25v6M17 25v6M20 25v6M23 25v6M26 25v6M29 25v6" ${ST}/>
+  <rect x="38" y="4" width="6.2" height="11" rx=".4" fill="#334155"/><rect x="38.7" y="4.8" width="4.8" height="3.6" fill="${c}"/>
+  <circle cx="39.8" cy="10.5" r=".6" fill="#fbbf24"/><circle cx="42.2" cy="10.5" r=".6" fill="#ef4444"/><rect x="38.7" y="12.2" width="4.8" height="1.6" fill="#64748b"/>`],
+ BIGLATHE: [60,25, c=>`<rect x="2" y="7" width="56" height="12" fill="#e2e8f0" ${ST}/><path d="M14 9h43M14 17h43" ${ST}/>
+  <rect x="1" y="3.5" width="12" height="19" rx=".6" fill="#94a3b8" ${ST}/>
+  <circle cx="15.5" cy="13" r="5.6" fill="#cbd5e1" ${ST}/><circle cx="15.5" cy="13" r="1.5" fill="#475569"/>
+  <path d="M15.5 7.8v3M15.5 15.2v3M11 15.6l2.6-1.5M20 10.4l-2.6 1.5" stroke="#334155" stroke-width=".9"/>
+  <rect x="27" y="4" width="8" height="18" fill="#cbd5e1" ${ST}/><rect x="29.2" y="10.8" width="3.6" height="3.6" fill="${c}"/><circle cx="31" cy="23.2" r="1.6" fill="none" ${ST}/>
+  <rect x="48" y="8.5" width="8.5" height="9" rx=".6" fill="#94a3b8" ${ST}/><rect x="46" y="12" width="2" height="2" fill="#64748b"/>
+  <rect x="2" y="22.3" width="8" height="2.4" fill="#334155"/><path d="M2 21h56" stroke="#64748b" stroke-width=".4"/>`],
+ VTL: [35,35, c=>`<rect x="2" y="3" width="31" height="24" rx="1" fill="#e2e8f0" ${ST}/>
+  <circle cx="17.5" cy="14.5" r="11" fill="#cbd5e1" ${ST}/><circle cx="17.5" cy="14.5" r="7.5" fill="none" stroke="#94a3b8" stroke-width=".3"/>
+  ${[0,90,180,270].map(a=>`<rect x="16.6" y="4.5" width="1.8" height="3" fill="#475569" transform="rotate(${a} 17.5 14.5)"/>`).join('')}
+  <circle cx="17.5" cy="14.5" r="1.4" fill="#64748b"/>
+  <rect x="1" y="27" width="7" height="7" fill="#64748b" ${ST}/><rect x="27" y="27" width="7" height="7" fill="#64748b" ${ST}/>
+  <rect x="1" y="23.5" width="33" height="3.5" fill="#94a3b8" ${ST}/>
+  <rect x="14" y="16" width="7" height="10" rx=".4" fill="${c}" ${ST}/><rect x="16" y="13.5" width="3" height="3" fill="#334155"/>
+  <rect x="28.5" y=".4" width="5.5" height="5" rx=".4" fill="#334155"/><rect x="29.1" y="1" width="4.3" height="2.2" fill="${c}"/>`],
  HORI: [35,30, c=>`<rect x="1" y="8" width="26" height="21" rx="1" fill="#e2e8f0" ${ST}/>
   <rect x="2.5" y=".6" width="10" height="7" fill="#cbd5e1" ${ST}/><rect x="14" y=".6" width="10" height="7" fill="#cbd5e1" ${ST}/>
   <path d="M2.5 2.9h10M2.5 5.2h10M14 2.9h10M14 5.2h10" ${ST}/>
@@ -196,9 +260,9 @@ const ART = {
 };
 function artSvg(i, x, y, w, h){
  const ph = D.photos && D.photos[i.type];
- if(ph) return `<svg x="${x}" y="${y}" width="${w}" height="${h}" viewBox="0 0 100 100" preserveAspectRatio="none" pointer-events="none"><rect width="100" height="100" fill="#fff"/></svg><image href="${ph}" x="${x}" y="${y}" width="${w}" height="${h}" preserveAspectRatio="xMidYMid meet" pointer-events="none"/>`;
+ if(ph) return `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#fff" pointer-events="none"/><image href="${ph}" x="${x}" y="${y}" width="${w}" height="${h}" preserveAspectRatio="xMidYMid meet" pointer-events="none"/>`;
  const a = ART[i.type]; if(!a) return '';
- return `<svg x="${x}" y="${y}" width="${w}" height="${h}" viewBox="0 0 ${a[0]} ${a[1]}" preserveAspectRatio="none" pointer-events="none">${a[2](i.color)}</svg>`;
+ return `<g transform="translate(${x} ${y}) scale(${w/a[0]} ${h/a[1]})" pointer-events="none">${a[2](i.color)}</g>`;
 }
 const DOORS = {
  SWING:   {label:'여닫이문', w:0.9, color:'#b45309'},
@@ -241,7 +305,7 @@ function load(){
  return blank();
 }
 let saveT = 0;
-function save(){ clearTimeout(saveT); saveT = setTimeout(()=>{ try{ localStorage.setItem(KEY, JSON.stringify(D)); }catch(e){} }, 300); }
+function save(){ if(!loading && !dirty){ dirty = true; refreshStatus(); } try{ localStorage.setItem('ntl_layout_dirty', dirty?'1':''); }catch(e){} clearTimeout(saveT); saveT = setTimeout(()=>{ try{ localStorage.setItem(KEY, JSON.stringify(D)); }catch(e){} }, 300); }
 function pushUndo(){ undo.push(JSON.stringify(D)); if(undo.length>50) undo.shift(); }
 function toast(m){ const t=$('toast'); t.textContent=m; t.classList.add('on'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('on'),1600); }
 function uid(){ return 'i'+Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
@@ -333,13 +397,20 @@ function flipInOut(i){
 function eqName(i){ return `${TYPES[i.type]?.label||i.type} ${i.no}호기`; }
 
 /* ---------- 렌더 ---------- */
+function defsStr(){
+ return `<defs><pattern id="gs" width="${S/2}" height="${S/2}" patternUnits="userSpaceOnUse"><path d="M ${S/2} 0 L 0 0 0 ${S/2}" fill="none" stroke="#eef1f5" stroke-width="1"/></pattern>
+ <pattern id="gl" width="${S*5}" height="${S*5}" patternUnits="userSpaceOnUse"><rect width="${S*5}" height="${S*5}" fill="url(#gs)"/><path d="M ${S*5} 0 L 0 0 0 ${S*5}" fill="none" stroke="#d5dbe3" stroke-width="1"/></pattern>
+ <marker id="arw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#dc2626"/></marker></defs>`;
+}
 function render(){
+ svg.innerHTML = defsStr() + `<g id="world" transform="translate(${view.x},${view.y}) scale(${view.z})">${worldInner(D, sel)}</g>`;
+}
+// 도면 내용(바닥·눈금·항목) — 다른 도면 데이터로도 그릴 수 있게 분리
+function worldInner(data, selId){
+ const d0 = D, s0 = sel; D = data; sel = selId;
+ try{
  const W = D.floorW*S, H = D.floorH*S;
  let g = '';
- // 그리드
- g += `<defs><pattern id="gs" width="${S/2}" height="${S/2}" patternUnits="userSpaceOnUse"><path d="M ${S/2} 0 L 0 0 0 ${S/2}" fill="none" stroke="#eef1f5" stroke-width="1"/></pattern>
- <pattern id="gl" width="${S*5}" height="${S*5}" patternUnits="userSpaceOnUse"><rect width="${S*5}" height="${S*5}" fill="url(#gs)"/><path d="M ${S*5} 0 L 0 0 0 ${S*5}" fill="none" stroke="#d5dbe3" stroke-width="1"/></pattern></defs>`;
- g += `<g id="world" transform="translate(${view.x},${view.y}) scale(${view.z})">`;
  g += `<rect id="floor" x="0" y="0" width="${W}" height="${H}" fill="#fff" stroke="#334155" stroke-width="3"/>`;
  g += `<rect x="0" y="0" width="${W}" height="${H}" fill="url(#gl)" pointer-events="none"/>`;
  // 눈금(5m)
@@ -347,13 +418,46 @@ function render(){
  for(let m=5;m<=D.floorH;m+=5) g+=`<text x="-8" y="${m*S+4}" font-size="11" text-anchor="end" fill="#64748b">${m}</text>`;
  g += `<text x="0" y="-26" font-size="18" font-weight="bold" fill="#1e293b">${esc(D.title)}</text>`;
  const zones = D.items.filter(i=>i.kind==='zone'), eqs = D.items.filter(i=>i.kind==='eq'), doors = D.items.filter(i=>i.kind==='door');
- [...zones, ...eqs, ...doors].forEach(i=>{ g += itemSvg(i); });
- g += `</g>`;
- svg.innerHTML = g;
+  [...zones, ...eqs, ...doors].forEach(i=>{ g += itemSvg(i); });
+ return g;
+ } finally { D = d0; sel = s0; }
+}
+// 정적 SVG (이미지·비교용). o.marks=[{i,c,t,dash,fill}], o.arrows=[[x1,y1,x2,y2]](m), o.legend
+function staticSvg(data, o={}){
+ const W = data.floorW*S, H = data.floorH*S, pad = 50, top = 50, bot = o.legend ? 60 : 30;
+ let m = '';
+ (o.marks||[]).forEach(k=>{
+  const i=k.i, x=i.x*S, y=i.y*S, w=i.w*S, h=i.h*S, cx=x+w/2, cy=y+h/2, rr=(i.rot||0)*Math.PI/180;
+  const fh = Math.abs(w*Math.sin(rr))+Math.abs(h*Math.cos(rr));
+  m += `<g transform="rotate(${i.rot||0} ${cx} ${cy})"><rect x="${x-4}" y="${y-4}" width="${w+8}" height="${h+8}" rx="4" fill="${k.fill||'none'}" fill-opacity=".25" stroke="${k.c}" stroke-width="3" ${k.dash?'stroke-dasharray="7 4"':''}/></g>`;
+  if(k.t) m += `<text x="${cx}" y="${cy-fh/2-8}" font-size="12" font-weight="bold" text-anchor="middle" fill="${k.c}" stroke="#fff" stroke-width="3" paint-order="stroke">${esc(k.t)}</text>`;
+ });
+ (o.arrows||[]).forEach(a=>{ m += `<line x1="${a[0]*S}" y1="${a[1]*S}" x2="${a[2]*S}" y2="${a[3]*S}" stroke="#dc2626" stroke-width="2.5" stroke-dasharray="6 3" marker-end="url(#arw)"/>`; });
+ let lg = '';
+ if(o.legend){
+  const used = Object.entries(TYPES).filter(([k])=>data.items.some(i=>i.kind==='eq'&&i.type===k));
+  lg = `<g transform="translate(0,${H+28})">` + used.map(([k,t],n)=>`<rect x="${n*120}" y="0" width="12" height="12" fill="${t.color}"/><text x="${n*120+17}" y="11" font-size="12">${t.label} ${data.items.filter(i=>i.kind==='eq'&&i.type===k).length}대</text>`).join('') + `</g>`;
+ }
+ const vw = W+pad*2, vh = H+top+bot;
+ return {w:vw, h:vh, svg:`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${-pad} ${-top} ${vw} ${vh}" width="100%" height="100%" font-family="Malgun Gothic, Apple SD Gothic Neo, Noto Sans KR, sans-serif"><rect x="${-pad}" y="${-top}" width="${vw}" height="${vh}" fill="#fff"/>${defsStr()}${worldInner(data,null)}${m}${lg}</svg>`};
+}
+// SVG 문자열 → PNG 미리보기·저장
+function showPng(src, w, h, name){
+ const sc = Math.min(2, 4000/Math.max(w,h));
+ src = src.replace('width="100%" height="100%"', `width="${Math.round(w*sc)}" height="${Math.round(h*sc)}"`);
+ const img = new Image();
+ img.onload = ()=>{
+  const c = document.createElement('canvas'); c.width=Math.round(w*sc); c.height=Math.round(h*sc);
+  c.getContext('2d').drawImage(img,0,0);
+  const url = c.toDataURL('image/png'); $('pngImg').src = url; $('mImg').classList.add('on');
+  $('pngDown').onclick = ()=>c.toBlob(b=>dl(name+'.png', b, url));
+ };
+ img.onerror = ()=>toast('이미지 생성 실패');
+ img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(src);
 }
 function itemSvg(i){
  const x=i.x*S, y=i.y*S, w=i.w*S, h=i.h*S, cx=x+w/2, cy=y+h/2, on = i.id===sel;
- let s = `<g data-id="${i.id}" transform="rotate(${i.rot||0} ${cx} ${cy})" style="cursor:move">`;
+ let s = `<g data-id="${i.id}" style="cursor:move"><g transform="rotate(${i.rot||0} ${cx} ${cy})">`, post = '';
  if(i.kind==='zone'){
   s += `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${i.color}" fill-opacity=".55" stroke="${on?'#f97316':'#3b82f6'}" stroke-width="${on?3:2}" stroke-dasharray="8 5" rx="2"/>`;
   s += `<text x="${x+8}" y="${y+20}" font-size="15" font-weight="bold" fill="#1e3a8a" pointer-events="none">${esc(i.name)}</text>`;
@@ -374,11 +478,13 @@ function itemSvg(i){
    s += artSvg(i, x, y, w, h);
    const lab = `${t.label} ${i.no}호기`;
    const tw = f => [...lab].reduce((n,ch)=>n+(/[가-힣]/.test(ch)?f:f*0.62),0)+8;
-   let f = fs, inside = tw(f) <= w-4 && h >= 50;
+   // 회전 후 실제 차지 영역(fw×fh) 기준으로 이름표를 똑바로 표시
+   const rr = (i.rot||0)*Math.PI/180, fw = Math.abs(w*Math.cos(rr))+Math.abs(h*Math.sin(rr)), fh = Math.abs(w*Math.sin(rr))+Math.abs(h*Math.cos(rr));
+   let f = Math.max(8, Math.min(13, fw/8, fh/3.2)), inside = tw(f) <= fw-4 && fh >= 50;
    if(!inside) f = 10;
-   const lw = tw(f), lh = f+5, ly = inside ? y+h-lh-2 : y+h+3;
-   s += `<rect x="${cx-lw/2}" y="${ly}" width="${lw}" height="${lh}" rx="3" fill="${i.color}" fill-opacity=".92" pointer-events="none"/>`;
-   s += `<text x="${cx}" y="${ly+lh/2+f*0.36}" font-size="${f}" font-weight="bold" text-anchor="middle" fill="#fff" pointer-events="none">${esc(lab)}</text>`;
+   const lw = tw(f), lh = f+5, ly = inside ? cy+fh/2-lh-2 : cy+fh/2+3;
+   post += `<rect x="${cx-lw/2}" y="${ly}" width="${lw}" height="${lh}" rx="3" fill="${i.color}" fill-opacity=".92" pointer-events="none"/>`;
+   post += `<text x="${cx}" y="${ly+lh/2+f*0.36}" font-size="${f}" font-weight="bold" text-anchor="middle" fill="#fff" pointer-events="none">${esc(lab)}</text>`;
    s += `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="none" stroke="${on?'#f97316':'#94a3b8'}" stroke-width="${on?3:1}" stroke-dasharray="${on?'':'3 3'}" pointer-events="none"/>`;
   }else{
   s += `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${i.color}" fill-opacity=".18" stroke="${on?'#f97316':i.color}" stroke-width="${on?3:2}" rx="3"/>`;
@@ -390,7 +496,7 @@ function itemSvg(i){
  if(on){
   s += `<rect data-h="rs" x="${x+w-7}" y="${y+h-7}" width="14" height="14" fill="#fff" stroke="#f97316" stroke-width="2" style="cursor:nwse-resize"/>`;
  }
- return s + `</g>`;
+ return s + `</g>${post}</g>`;
 }
 
 /* ---------- 속성 패널 ---------- */
@@ -436,7 +542,7 @@ function renderProp(){
  if($('aFlipIO')) $('aFlipIO').onclick = ()=>{ pushUndo(); flipInOut(i); changed(); };
  if($('aFlipLR')) $('aFlipLR').onclick = ()=>{ pushUndo(); i.flip=!i.flip; changed(); };
  if($('aPhoto')) $('aPhoto').onclick = ()=>pickPhoto(i.type);
- if($('aPhotoDel')) $('aPhotoDel').onclick = ()=>{ pushUndo(); delete D.photos[i.type]; buildPalette(); changed(); };
+ if($('aPhotoDel')) $('aPhotoDel').onclick = ()=>{ pushUndo(); delete D.photos[i.type]; Store.savePhoto(i.type, null); buildPalette(); changed(); };
  $('aRot').onclick = rotateSel; $('aDup').onclick = dupSel; $('aDel').onclick = delSel;
  $('aFront').onclick = ()=>{ pushUndo(); D.items = D.items.filter(v=>v!==i).concat(i); changed(); };
 }
@@ -450,9 +556,10 @@ function dupSel(){
 function delSel(){ const i=D.items.find(v=>v.id===sel); if(!i) return; pushUndo(); D.items=D.items.filter(v=>v!==i); sel=null; changed(); toast('삭제됨 (Ctrl+Z로 되돌리기)'); }
 
 /* ---------- 현황 ---------- */
-function zoneOf(e){
+function zoneOf(e){ return zoneOfIn(D, e); }
+function zoneOfIn(data, e){
  const cx=e.x+e.w/2, cy=e.y+e.h/2;
- const zs = D.items.filter(z=>z.kind==='zone' && cx>=z.x && cx<=z.x+z.w && cy>=z.y && cy<=z.y+z.h);
+ const zs = data.items.filter(z=>z.kind==='zone' && cx>=z.x && cx<=z.x+z.w && cy>=z.y && cy<=z.y+z.h);
  return zs.length ? zs[zs.length-1].name : '미지정';
 }
 function renderSummary(){
@@ -555,6 +662,7 @@ svg.addEventListener('pointercancel', endPtr);
 svg.addEventListener('wheel', e=>{ e.preventDefault(); zoomAt(e.deltaY<0?1.12:1/1.12, e.clientX, e.clientY); }, {passive:false});
 
 document.addEventListener('keydown', e=>{
+ if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='s'){ e.preventDefault(); saveCurrent(false); return; }
  const tag = document.activeElement.tagName;
  if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT') return;
  if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='z'){ e.preventDefault(); doUndo(); return; }
@@ -582,7 +690,10 @@ $('bUndo').onclick = doUndo;
 $('bSnap').onclick = ()=>{ snap=!snap; $('bSnap').textContent='격자맞춤: '+(snap?'켜짐':'꺼짐'); };
 $('bFit').onclick = fit;
 $('zIn').onclick = ()=>zoomAt(1.2); $('zOut').onclick = ()=>zoomAt(1/1.2);
-$('bNew').onclick = ()=>confirmBox('현재 도면을 지우고 새로 시작할까요? (먼저 내보내기로 백업 권장)', ()=>{ pushUndo(); D=blank(); sel=null; syncHead(); buildPalette(); changed(); fit(); });
+$('bNew').onclick = ()=>{
+ const go = ()=>{ pushUndo(); const ph = D.photos; loading=true; D=blank(); D.photos = Store.mode==='cloud' ? {...cloudPhotos} : (ph||{}); sel=null; setCur(null); syncHead(); buildPalette(); changed(); loading=false; dirty=false; refreshStatus(); fit(); closeM('mList'); };
+ dirty ? confirmBox('저장하지 않은 변경이 있습니다. 새 도면을 시작할까요?', go) : go();
+};
 $('bPrint').onclick = ()=>{ fit(); try{ window.print(); }catch(err){ toast('이 화면에서는 인쇄가 막혀 있습니다. 이미지 저장 후 인쇄하세요.'); } };
 
 function closeM(id){ $(id).classList.remove('on'); }
@@ -613,23 +724,7 @@ $('jsonOk').onclick = ()=>{
 };
 
 /* ---------- 이미지 저장 ---------- */
-$('bPng').onclick = ()=>{
- const pad = 60, W = D.floorW*S, H = D.floorH*S, sc = 2;
- const prevSel = sel; sel = null; render();
- const world = $('world').innerHTML; sel = prevSel; render();
- const defs = svg.querySelector('defs').outerHTML;
- const legend = Object.entries(TYPES).map(([key,t],k)=>`<rect x="${k*120}" y="0" width="12" height="12" fill="${t.color}"/><text x="${k*120+17}" y="11" font-size="12">${t.label}</text>`).join('');
- const total = W+pad*2, totalH = H+pad*2+30;
- const src = `<svg xmlns="http://www.w3.org/2000/svg" width="${total*sc}" height="${totalH*sc}" viewBox="0 0 ${total} ${totalH}" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif"><rect width="100%" height="100%" fill="#fff"/>${defs}<g transform="translate(${pad},${pad})">${world}</g><g transform="translate(${pad},${H+pad+14})">${legend}</g></svg>`;
- const img = new Image();
- img.onload = ()=>{
-  const c = document.createElement('canvas'); c.width=total*sc; c.height=totalH*sc;
-  c.getContext('2d').drawImage(img,0,0);
-  const url = c.toDataURL('image/png'); $('pngImg').src = url; $('mImg').classList.add('on');
-  $('pngDown').onclick = ()=>c.toBlob(b=>dl((D.title||'배치도')+'.png', b, url));
- };
- img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(src);
-};
+$('bPng').onclick = ()=>{ const r = staticSvg(D, {legend:true}); showPng(r.svg, r.w, r.h, D.title||'배치도'); };
 
 /* ---------- 파일 저장 (artifact downloads 기능 → 없으면 일반 다운로드) ---------- */
 let DL = null;
@@ -654,10 +749,10 @@ function pickPhoto(type){
   const f = photoIn.files[0]; photoIn.value=''; if(!f) return;
   const r = new FileReader();
   r.onload = ()=>{ const im = new Image(); im.onload = ()=>{
-    const m = 480, k = Math.min(1, m/Math.max(im.width, im.height));
+    const m = 400, k = Math.min(1, m/Math.max(im.width, im.height));
     const c = document.createElement('canvas'); c.width=Math.round(im.width*k); c.height=Math.round(im.height*k);
     const x = c.getContext('2d'); x.fillStyle='#fff'; x.fillRect(0,0,c.width,c.height); x.drawImage(im,0,0,c.width,c.height);
-    pushUndo(); (D.photos ||= {})[type] = c.toDataURL('image/jpeg', 0.85);
+    pushUndo(); const url = c.toDataURL('image/jpeg', 0.82); (D.photos ||= {})[type] = url; Store.savePhoto(type, url);
     buildPalette(); changed(); toast(TYPES[type].label+' 사진 등록됨');
    }; im.onerror=()=>toast('이미지를 읽을 수 없습니다'); im.src = r.result; };
   r.readAsDataURL(f);
@@ -666,9 +761,223 @@ function pickPhoto(type){
 }
 $('bArt').onclick = ()=>{ D.art = (D.art===false); $('bArt').textContent = '표시: '+(D.art!==false?'그림':'색상'); changed(); };
 
+/* ---------- 도면 저장소 (클라우드 db → 없으면 이 브라우저) ---------- */
+const LKEY = 'ntl_layouts_v1', CKEY = 'ntl_layout_cur';
+let curId = null, dirty = false, loading = false, cloudPhotos = {};
+try{ curId = localStorage.getItem(CKEY) || null; dirty = localStorage.getItem('ntl_layout_dirty')==='1'; }catch(e){}
+function setCur(id){ curId = id; try{ id ? localStorage.setItem(CKEY,id) : localStorage.removeItem(CKEY); }catch(e){} }
+const Store = {
+ mode:'local', db:null, list:[], ready:true,
+ readLocal(){ try{ return JSON.parse(localStorage.getItem(LKEY)||'[]'); }catch(e){ return []; } },
+ writeLocal(a){ try{ localStorage.setItem(LKEY, JSON.stringify(a)); return true; }catch(e){ return false; } },
+ init(){
+  this.list = this.readLocal(); refreshStatus();
+  let p; try{ p = window.claude && claude.use ? claude.use('db') : null; }catch(e){ p = null; }
+  if(!p) return;
+  p.then(db=>{
+   if(!db) return;
+   this.db = db; this.mode = 'cloud'; this.ready = false; refreshStatus();
+   const t = setTimeout(()=>{ if(!this.ready) toast('클라우드 연결이 늦어지고 있습니다'); }, 10000);
+   db.collection('layouts').onSnapshot(snap=>{
+    clearTimeout(t); this.ready = true;
+    this.list = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    refreshStatus(); refreshOpenModals();
+   }, ()=>{ clearTimeout(t); this.db=null; this.mode='local'; this.list=this.readLocal(); this.ready=true; refreshStatus(); toast('클라우드 연결 실패 — 이 브라우저에 저장합니다'); });
+   db.collection('photos').onSnapshot(snap=>{
+    const ph = {}; snap.docs.forEach(d=>{ const v = d.data(); if(v && v.url) ph[d.id] = v.url; });
+    cloudPhotos = ph; D.photos = {...ph}; buildPalette(); render(); renderProp();
+   }, ()=>{});
+  }).catch(()=>{});
+ },
+ async save(id, name, data){
+  const rec = {name, updated:new Date().toISOString(), eqCount:data.items.filter(i=>i.kind==='eq').length};
+  if(this.mode==='cloud'){
+   const d = {...data}; delete d.photos;      // 사진은 photos 컬렉션에 따로 저장
+   await this.db.collection('layouts').doc(id).set({...rec, data:JSON.stringify(d)});
+  }else{
+   const a = this.readLocal().filter(r=>r.id!==id); a.push({id, ...rec, data:JSON.stringify(data)});
+   if(!this.writeLocal(a)) throw {code:'local_full'};
+   this.list = a;
+  }
+ },
+ async remove(id){
+  if(this.mode==='cloud') await this.db.collection('layouts').doc(id).delete();
+  else { const a = this.readLocal().filter(r=>r.id!==id); this.writeLocal(a); this.list = a; }
+ },
+ get(id){
+  const r = this.list.find(r=>r.id===id); if(!r) return null;
+  try{ const d = Object.assign(blank(), JSON.parse(r.data)); if(this.mode==='cloud') d.photos = {...cloudPhotos}; return d; }catch(e){ return null; }
+ },
+ async savePhoto(type, url){
+  if(this.mode!=='cloud') return;
+  try{ const ref = this.db.collection('photos').doc(type); url ? await ref.set({url}) : await ref.delete(); }
+  catch(e){ toast(e && e.code==='invalid_argument' ? '사진 용량이 커서 클라우드 저장 실패' : '사진 클라우드 저장 실패'); }
+ }
+};
+function curRec(){ return curId ? Store.list.find(r=>r.id===curId) : null; }
+function refreshStatus(){
+ const m = Store.mode==='cloud' ? (Store.ready?'☁ 클라우드':'☁ 연결 중…') : '이 PC 브라우저';
+ const r = curRec();
+ $('stat').innerHTML = `${m} · ${r ? esc(r.name) : '저장 안 된 도면'} ${dirty || !r ? '<b>● 수정됨</b>' : '✓ 저장됨'}`;
+}
+function refreshOpenModals(){ if($('mList').classList.contains('on')) renderList(); if($('mCmp').classList.contains('on')){ fillCmpSel(); renderCmp(); } }
+async function saveCurrent(asNew){
+ if(!Store.ready){ toast('저장소 연결 중입니다. 잠시 후 다시 시도하세요'); return; }
+ let name = (D.title||'').trim() || '이름 없는 도면', id = curId;
+ if(asNew || !id || !Store.list.some(r=>r.id===id)){
+  id = uid();
+  if(Store.list.some(r=>r.name===name)){ let n=2; while(Store.list.some(r=>r.name===`${name} (${n})`)) n++; name = `${name} (${n})`; }
+ }
+ D.title = name; syncHead(); render();
+ try{
+  await Store.save(id, name, D);
+  setCur(id); dirty = false; try{ localStorage.setItem('ntl_layout_dirty',''); }catch(e){}
+  refreshStatus(); toast(`"${name}" 저장됨`); if($('mList').classList.contains('on')) renderList();
+ }catch(e){
+  toast(e && e.code==='local_full' ? '브라우저 저장공간 부족 — 내보내기로 백업하세요'
+      : e && e.code==='invalid_argument' ? '도면 용량이 커서 저장 실패' : e && e.code==='quota_exceeded' ? '저장 공간이 가득 찼습니다. 안 쓰는 도면을 삭제하세요' : '저장 실패');
+ }
+}
+function openLayout(id){
+ const go = ()=>{
+  const d = Store.get(id); if(!d){ toast('도면을 열 수 없습니다'); return; }
+  pushUndo(); loading = true; D = d; sel = null; setCur(id); syncHead(); buildPalette(); changed(); loading = false;
+  dirty = false; try{ localStorage.setItem('ntl_layout_dirty',''); }catch(e){} refreshStatus(); fit(); closeM('mList'); toast(`"${d.title}" 열림`);
+ };
+ (dirty && id!==curId) ? confirmBox('저장하지 않은 변경이 있습니다. 다른 도면을 열까요?', go) : go();
+}
+const fmtD = t=>{ try{ const d=new Date(t); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; }catch(e){ return ''; } };
+function renderList(){
+ $('lsMode').textContent = Store.mode==='cloud'
+  ? '클라우드에 저장됩니다 — 이 링크를 여는 PC·태블릿 어디서나 같은 목록이 보입니다.'
+  : '이 브라우저에만 저장됩니다 — 다른 PC에서 쓰려면 "내보내기" 파일로 옮기세요.';
+ $('lsName').value = D.title;
+ const a = [...Store.list].sort((x,y)=>String(y.updated).localeCompare(String(x.updated)));
+ $('lsTbl').innerHTML = '<tr><th>도면</th><th>설비</th><th>수정일</th><th></th></tr>' + (a.length ? a.map(r=>
+  `<tr class="${r.id===curId?'cur':''}"><td><b>${esc(r.name)}</b>${r.id===curId?' <span class="tag" style="background:#f97316">현재</span>':''}</td><td>${r.eqCount??''}대</td><td>${fmtD(r.updated)}</td>
+   <td><button data-open="${r.id}">열기</button> <button data-del="${r.id}" style="color:#dc2626">삭제</button></td></tr>`).join('')
+  : '<tr><td colspan="4" class="empty">저장된 도면이 없습니다. 위 "저장"을 누르세요.</td></tr>');
+ $('lsTbl').querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>openLayout(b.dataset.open));
+ $('lsTbl').querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{
+  const id = b.dataset.del, r = Store.list.find(v=>v.id===id);
+  confirmBox(`"${r?r.name:''}" 도면을 삭제할까요? 되돌릴 수 없습니다.`, async ()=>{
+   try{ await Store.remove(id); if(id===curId) setCur(null); refreshStatus(); renderList(); toast('삭제됨'); }catch(e){ toast('삭제 실패'); }
+  });
+ });
+}
+$('bSave').onclick = ()=>saveCurrent(false);
+$('bList').onclick = ()=>{ renderList(); $('mList').classList.add('on'); };
+$('lsName').oninput = e=>{ D.title = e.target.value; $('title').value = D.title; render(); save(); };
+$('lsSave').onclick = ()=>saveCurrent(false);
+$('lsSaveNew').onclick = ()=>saveCurrent(true);
+
+/* ---------- 전후 비교 ---------- */
+let cmpMode = 'side', cmpLast = null;
+function cmpData(v){ return v==='__cur' ? D : Store.get(v); }
+function cmpName(v){ if(v==='__cur') return '현재 작업 중'+(D.title?` (${D.title})`:''); const r=Store.list.find(r=>r.id===v); return r ? r.name : '?'; }
+function fillCmpSel(){
+ const a = [...Store.list].sort((x,y)=>String(x.updated).localeCompare(String(y.updated)));
+ const opts = a.map(r=>`<option value="${r.id}">${esc(r.name)}</option>`).join('') + `<option value="__cur">현재 작업 중</option>`;
+ ['cA','cB'].forEach((id,n)=>{
+  const el = $(id), v = el.value; el.innerHTML = opts;
+  if(v && [...el.options].some(o=>o.value===v)) el.value = v;
+  else el.value = n===0 ? (a[0]?a[0].id:'__cur') : '__cur';
+ });
+}
+const ctr = e=>[e.x+e.w/2, e.y+e.h/2];
+function diffLayouts(A, B){
+ const key = e=>e.type+'#'+e.no, ea = A.items.filter(i=>i.kind==='eq'), eb = B.items.filter(i=>i.kind==='eq');
+ const mA = new Map(ea.map(e=>[key(e),e])), mB = new Map(eb.map(e=>[key(e),e]));
+ const rows = []; let same = 0;
+ eb.forEach(b=>{
+  const a = mA.get(key(b));
+  if(!a){ rows.push({k:'신규', b}); return; }
+  const [ax,ay]=ctr(a), [bx,by]=ctr(b), dist = Math.hypot(bx-ax, by-ay), za = zoneOfIn(A,a), zb = zoneOfIn(B,b);
+  if(dist>0.05 || (a.rot||0)!==(b.rot||0) || za!==zb) rows.push({k:'이동', a, b, dist, za, zb});
+  else same++;
+ });
+ ea.forEach(a=>{ if(!mB.has(key(a))) rows.push({k:'제거', a}); });
+ const ord = {'이동':0,'신규':1,'제거':2};
+ rows.sort((x,y)=>ord[x.k]-ord[y.k] || eqName(x.b||x.a).localeCompare(eqName(y.b||y.a)));
+ const types = Object.keys(TYPES).map(k=>({k, a:ea.filter(e=>e.type===k).length, b:eb.filter(e=>e.type===k).length})).filter(t=>t.a||t.b);
+ return {rows, same, types, na:ea.length, nb:eb.length};
+}
+const KC = {'이동':'#f97316','신규':'#16a34a','제거':'#dc2626'};
+const pos = e=>{ const [x,y]=ctr(e); return `(${r1(x)}, ${r1(y)})`; };
+const cnt = (df,k)=>df.rows.filter(r=>r.k===k).length;
+function cmpMarks(A, B, df){
+ const mA = df.rows.filter(r=>r.k!=='신규').map(r=>({i:r.a, c:KC[r.k], t:r.k, dash:true}));
+ const mB = df.rows.filter(r=>r.k!=='제거').map(r=>({i:r.b, c:KC[r.k], t:r.k}));
+ // 겹쳐보기: 바뀐 설비만 이전 위치를 회색 점선으로 (변경 없는 설비는 겹치지 않게 생략)
+ const over = df.rows.filter(r=>r.k==='이동').map(r=>({i:r.a, c:'#94a3b8', t:'이전', dash:true, fill:'#cbd5e1'}))
+  .concat(df.rows.filter(r=>r.k==='제거').map(r=>({i:r.a, c:KC['제거'], t:'제거', dash:true})), mB);
+ const arrows = df.rows.filter(r=>r.k==='이동' && r.dist>0.05).map(r=>[...ctr(r.a), ...ctr(r.b)]);
+ return {mA, mB, over, arrows};
+}
+function renderCmp(){
+ const va = $('cA').value, vb = $('cB').value, A = cmpData(va), B = cmpData(vb);
+ if(!A || !B){ $('cmpView').innerHTML = '<div class="empty" style="padding:20px">비교할 도면을 선택하세요.</div>'; $('cmpDiff').innerHTML=''; cmpLast=null; return; }
+ const df = diffLayouts(A, B), mk = cmpMarks(A, B, df); cmpLast = {va, vb, A, B, df, mk};
+ if(cmpMode==='side'){
+  $('cmpView').innerHTML = `<div><b>이전 · ${esc(cmpName(va))}</b>${staticSvg(A,{marks:mk.mA}).svg}</div><div><b>이후 · ${esc(cmpName(vb))}</b>${staticSvg(B,{marks:mk.mB}).svg}</div>`;
+ }else{
+  $('cmpView').innerHTML = `<div><b>겹쳐보기 · 회색 점선 = 이전 위치, 빨간 화살표 = 이동 (같은 공장 도면끼리 비교할 때 사용)</b>${staticSvg(B,{marks:mk.over, arrows:mk.arrows}).svg}</div>`;
+ }
+ let h = `<div style="margin:4px 0 8px"><b>요약</b> — 이전 ${df.na}대 → 이후 ${df.nb}대 · 위치 동일 ${df.same} · <span class="tag" style="background:${KC['이동']}">이동 ${cnt(df,'이동')}</span> <span class="tag" style="background:${KC['신규']}">신규 ${cnt(df,'신규')}</span> <span class="tag" style="background:${KC['제거']}">제거 ${cnt(df,'제거')}</span></div>`;
+ if(df.types.length){
+  h += '<table><tr><th>설비 종류</th>' + df.types.map(t=>`<th>${TYPES[t.k].label}</th>`).join('') + '</tr>';
+  h += '<tr><td>이전</td>' + df.types.map(t=>`<td>${t.a}</td>`).join('') + '</tr><tr><td>이후</td>' + df.types.map(t=>`<td>${t.b}</td>`).join('') + '</tr>';
+  h += '<tr><td>증감</td>' + df.types.map(t=>{ const d=t.b-t.a; return `<td style="color:${d>0?'#16a34a':d<0?'#dc2626':'#94a3b8'}">${d>0?'+':''}${d}</td>`; }).join('') + '</tr></table>';
+ }
+ if(df.rows.length){
+  h += '<table style="margin-top:10px"><tr><th>구분</th><th>설비</th><th>이전 장소 (위치 m)</th><th>이후 장소 (위치 m)</th><th>비고</th></tr>';
+  df.rows.forEach(r=>{
+   const note = r.k==='이동' ? [r.dist>0.05?`${r1(r.dist)}m 이동`:'', (r.a.rot||0)!==(r.b.rot||0)?`회전 ${r.a.rot||0}°→${r.b.rot||0}°`:''].filter(Boolean).join(', ') : '';
+   h += `<tr><td><span class="tag" style="background:${KC[r.k]}">${r.k}</span></td><td>${esc(eqName(r.b||r.a))}</td>
+    <td>${r.a?esc(zoneOfIn(A,r.a))+' '+pos(r.a):'-'}</td><td>${r.b?esc(zoneOfIn(B,r.b))+' '+pos(r.b):'-'}</td><td>${note}</td></tr>`;
+  });
+  h += '</table>';
+ }else h += '<p class="empty">설비 배치 변경 없음</p>';
+ $('cmpDiff').innerHTML = h;
+}
+$('bCmp').onclick = ()=>{
+ if(!Store.list.length) toast('저장된 도면이 없어 "현재 작업 중"끼리만 비교됩니다. 먼저 이전 배치를 저장하세요');
+ fillCmpSel(); $('mCmp').classList.add('on'); renderCmp();
+};
+$('cA').onchange = $('cB').onchange = renderCmp;
+$('cSide').onclick = ()=>{ cmpMode='side'; $('cSide').classList.add('on'); $('cOver').classList.remove('on'); renderCmp(); };
+$('cOver').onclick = ()=>{ cmpMode='over'; $('cOver').classList.add('on'); $('cSide').classList.remove('on'); renderCmp(); };
+$('cCsv').onclick = ()=>{
+ if(!cmpLast) return; const {A,B,df,va,vb} = cmpLast, q = v=>`"${String(v??'').replace(/"/g,'""')}"`;
+ const L = [['이전 도면',cmpName(va)],['이후 도면',cmpName(vb)],[],['구분','설비','이전 장소','이전 위치(m)','이후 장소','이후 위치(m)','이동거리(m)','회전']];
+ df.rows.forEach(r=>L.push([r.k, eqName(r.b||r.a), r.a?zoneOfIn(A,r.a):'', r.a?pos(r.a):'', r.b?zoneOfIn(B,r.b):'', r.b?pos(r.b):'', r.k==='이동'?r1(r.dist):'', r.k==='이동'&&(r.a.rot||0)!==(r.b.rot||0)?`${r.a.rot||0}→${r.b.rot||0}`:'']));
+ L.push([]); L.push(['설비 종류','이전','이후','증감']); df.types.forEach(t=>L.push([TYPES[t.k].label,t.a,t.b,t.b-t.a]));
+ dl('설비배치_변경내역.csv', '\ufeff' + L.map(r=>r.map(q).join(',')).join('\r\n'));
+};
+$('cPng').onclick = ()=>{
+ if(!cmpLast) return; const {A,B,df,va,vb,mk} = cmpLast;
+ const PW = 1000, gap = 40, m = 30;
+ const panels = cmpMode==='side'
+  ? [[`이전 · ${cmpName(va)}`, staticSvg(A,{marks:mk.mA,legend:true})], [`이후 · ${cmpName(vb)}`, staticSvg(B,{marks:mk.mB,legend:true})]]
+  : [[`겹쳐보기 · ${cmpName(va)} → ${cmpName(vb)}`, staticSvg(B,{marks:mk.over, arrows:mk.arrows, legend:true})]];
+ const ph = Math.max(...panels.map(p=>PW*p[1].h/p[1].w));
+ const lines = [`이전 ${df.na}대 → 이후 ${df.nb}대 · 위치 동일 ${df.same} · 이동 ${cnt(df,'이동')} · 신규 ${cnt(df,'신규')} · 제거 ${cnt(df,'제거')}`]
+  .concat(df.rows.slice(0,40).map(r=>`[${r.k}] ${eqName(r.b||r.a)} : ${r.a?zoneOfIn(A,r.a)+' '+pos(r.a):'-'} → ${r.b?zoneOfIn(B,r.b)+' '+pos(r.b):'-'}${r.k==='이동'?` (${r1(r.dist)}m)`:''}`));
+ if(df.rows.length>40) lines.push(`… 외 ${df.rows.length-40}건 (CSV 참고)`);
+ const W = m*2 + panels.length*PW + (panels.length-1)*gap, H = m + 34 + ph + 20 + lines.length*20 + m;
+ let body = `<rect width="${W}" height="${H}" fill="#fff"/>`;
+ panels.forEach((p,n)=>{
+  const x = m + n*(PW+gap);
+  body += `<text x="${x}" y="${m+20}" font-size="20" font-weight="bold" fill="#1e293b">${esc(p[0])}</text>`;
+  body += p[1].svg.replace('width="100%" height="100%"', `x="${x}" y="${m+34}" width="${PW}" height="${PW*p[1].h/p[1].w}"`);
+ });
+ lines.forEach((t,n)=>{ body += `<text x="${m}" y="${m+34+ph+30+n*20}" font-size="${n?14:16}" font-weight="${n?'normal':'bold'}" fill="${n?'#334155':'#0f172a'}">${esc(t)}</text>`; });
+ showPng(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="100%" height="100%" font-family="Malgun Gothic, Apple SD Gothic Neo, Noto Sans KR, sans-serif">${body}</svg>`, W, H, '설비배치_전후비교');
+};
+
 /* ---------- 시작 ---------- */
 D = load();
-buildPalette(); syncHead(); changed();
+buildPalette(); syncHead(); loading = true; changed(); loading = false; Store.init();
 requestAnimationFrame(fit);
 window.addEventListener('resize', ()=>{ clearTimeout(window._rz); window._rz=setTimeout(fit,200); });
 </script>
