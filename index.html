@@ -1,0 +1,676 @@
+# Layout-Drawing<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NTL 설비 배치도</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;font-family:"Malgun Gothic","Apple SD Gothic Neo","Noto Sans KR",sans-serif;font-size:13px;color:#1e293b;background:#eef1f5;overflow:hidden}
+#app{display:grid;grid-template-columns:200px 1fr 240px;grid-template-rows:48px 1fr;height:100%}
+header{grid-column:1/4;display:flex;align-items:center;gap:6px;padding:0 10px;background:#1e3a5f;color:#fff;overflow-x:auto;white-space:nowrap}
+header h1{font-size:15px;margin:0 10px 0 0}
+header input#title{background:#2c4d77;border:1px solid #46699a;color:#fff;padding:5px 8px;border-radius:4px;width:180px}
+button{font:inherit;cursor:pointer;border:1px solid #cbd5e1;background:#fff;color:#1e293b;padding:5px 9px;border-radius:4px}
+button:hover{background:#f1f5f9}
+header button{background:#2c4d77;border-color:#46699a;color:#fff}
+header button:hover{background:#3a6090}
+header .sep{width:1px;height:24px;background:#46699a;margin:0 4px}
+aside{background:#fff;overflow-y:auto;padding:10px}
+#left{border-right:1px solid #dbe1e8}
+#right{border-left:1px solid #dbe1e8}
+aside h3{font-size:12px;margin:12px 0 6px;color:#475569;border-bottom:1px solid #e2e8f0;padding-bottom:4px}
+aside h3:first-child{margin-top:0}
+.pal{display:flex;align-items:center;gap:8px;width:100%;margin-bottom:5px;text-align:left;padding:7px 8px}
+.pal i{display:inline-block;width:14px;height:14px;border-radius:3px;flex:none}
+.pal span{flex:1}
+.pal small{color:#64748b}
+#stage{position:relative;overflow:hidden;background:#e5e9ef;touch-action:none}
+#svg{width:100%;height:100%;display:block;cursor:grab;user-select:none;-webkit-user-select:none}
+#svg.panning{cursor:grabbing}
+.zoombar{position:absolute;right:10px;bottom:10px;display:flex;gap:4px}
+.zoombar button{width:34px;height:34px;padding:0;font-size:16px;box-shadow:0 1px 3px rgba(0,0,0,.15)}
+#hint{position:absolute;left:10px;bottom:10px;background:rgba(255,255,255,.85);padding:4px 8px;border-radius:4px;font-size:11px;color:#475569}
+.prop label{display:block;font-size:11px;color:#64748b;margin:8px 0 2px}
+.prop input,.prop select,.prop textarea{width:100%;font:inherit;padding:5px 6px;border:1px solid #cbd5e1;border-radius:4px}
+.prop .row{display:flex;gap:6px}.prop .row>div{flex:1}
+.prop .btns{display:flex;flex-wrap:wrap;gap:5px;margin-top:10px}
+.empty{color:#94a3b8;font-size:12px;line-height:1.6}
+table{width:100%;border-collapse:collapse;font-size:12px}
+td,th{border-bottom:1px solid #eef1f5;padding:4px 3px;text-align:left}
+td:last-child,th:last-child{text-align:right}
+.modal{position:fixed;inset:0;background:rgba(15,23,42,.5);display:none;align-items:center;justify-content:center;z-index:10}
+.modal.on{display:flex}
+.modal>div{background:#fff;border-radius:8px;padding:16px;width:min(720px,94vw);max-height:90vh;overflow:auto}
+.modal textarea{width:100%;height:260px;font-family:monospace;font-size:12px}
+.modal img{max-width:100%;border:1px solid #e2e8f0}
+.modal .btns{display:flex;gap:6px;justify-content:flex-end;margin-top:10px}
+#toast{position:fixed;left:50%;top:60px;transform:translateX(-50%);background:#1e293b;color:#fff;padding:7px 14px;border-radius:6px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:20}
+#toast.on{opacity:.92}
+/* 모바일·태블릿 */
+@media (max-width:900px){
+ #app{grid-template-columns:1fr;grid-template-rows:48px auto 1fr auto}
+ header{grid-column:1}
+ #left{border:0;border-bottom:1px solid #dbe1e8;max-height:none;display:flex;gap:5px;overflow-x:auto;padding:6px;white-space:nowrap}
+ #left h3,#left .lg{display:none}
+ #left .pal{width:auto;margin:0;flex:none}
+ #right{border:0;border-top:1px solid #dbe1e8;max-height:38vh}
+ #hint{display:none}
+}
+@media print{
+ header,aside,.zoombar,#hint{display:none!important}
+ #app{display:block}#stage{position:fixed;inset:0;background:#fff}
+}
+</style>
+</head>
+<body>
+<div id="app">
+<header>
+ <h1>설비 배치도</h1>
+ <input id="title" value="NTL 공장 설비 배치도" title="도면 제목">
+ <span class="sep"></span>
+ <button id="bZone">＋ 장소</button>
+ <button id="bUndo" title="Ctrl+Z">↶ 되돌리기</button>
+ <button id="bSnap">격자맞춤: 켜짐</button>
+ <button id="bArt">표시: 그림</button>
+ <span class="sep"></span>
+ <button id="bFit">전체보기</button>
+ <button id="bPng">이미지</button>
+ <button id="bPrint">인쇄</button>
+ <button id="bExport">내보내기</button>
+ <button id="bImport">불러오기</button>
+ <button id="bNew">새 도면</button>
+</header>
+
+<aside id="left">
+ <h3>장소</h3>
+ <button class="pal" data-zone="1"><i style="background:#dbeafe;border:1px dashed #3b82f6"></i><span>장소(구역)</span></button>
+ <h3>문</h3>
+ <div id="palDoor"></div>
+ <h3>가공 설비</h3>
+ <div id="palMach"></div>
+ <h3>검사 설비</h3>
+ <div id="palInsp"></div>
+ <h3 class="lg">공장 크기 (m)</h3>
+ <div class="prop lg"><div class="row">
+  <div><input id="floorW" type="number" min="10" step="1"></div>
+  <div><input id="floorH" type="number" min="10" step="1"></div>
+ </div></div>
+</aside>
+
+<main id="stage">
+ <svg id="svg" xmlns="http://www.w3.org/2000/svg"></svg>
+ <div id="hint">클릭=추가 · 드래그=이동 · 모서리=크기 · 빈 곳 드래그=화면이동 · 휠=확대 · Del=삭제 · R=회전 · Ctrl+D=복제</div>
+ <div class="zoombar"><button id="zIn">＋</button><button id="zOut">－</button></div>
+</main>
+
+<aside id="right">
+ <h3>속성</h3>
+ <div id="prop" class="prop"></div>
+ <h3>설비 현황</h3>
+ <div id="summary"></div>
+</aside>
+</div>
+
+<div class="modal" id="mJson"><div>
+ <b id="mJsonT">내보내기</b>
+ <p class="empty" id="mJsonD"></p>
+ <textarea id="jsonTxt"></textarea>
+ <div class="btns"><button id="jsonFile" style="display:none">파일 선택</button><input type="file" id="jsonFileIn" accept=".json,application/json" style="display:none"><button id="jsonCopy">복사</button><button id="jsonSave">파일로 저장</button><button id="jsonOk">불러오기</button><button id="jsonClose">닫기</button></div>
+</div></div>
+<div class="modal" id="mImg"><div>
+ <b>배치도 이미지</b>
+ <p class="empty">이미지를 마우스 오른쪽 클릭(모바일은 길게 누르기) → "이미지 저장"으로 저장하세요.</p>
+ <img id="pngImg" alt="배치도">
+ <div class="btns"><button id="pngDown">PNG 다운로드</button><button onclick="closeM('mImg')">닫기</button></div>
+</div></div>
+<div class="modal" id="mConfirm"><div style="width:min(360px,90vw)">
+ <b id="cfMsg"></b>
+ <div class="btns"><button id="cfYes">확인</button><button onclick="closeM('mConfirm')">취소</button></div>
+</div></div>
+<div id="toast"></div>
+
+<script>
+'use strict';
+const S = 40;               // 1m = 40px (world 단위)
+const KEY = 'ntl_layout_v1';
+const TYPES = {
+ MCT:      {cat:'mach', label:'MCT',        w:2.5, h:2.2, color:'#3b82f6'},
+ HORI:     {cat:'mach', label:'호리젠탈',   w:3.5, h:3.0, color:'#6366f1'},
+ LATHE:    {cat:'mach', label:'선반',       w:3.0, h:1.8, color:'#f59e0b'},
+ CNC:      {cat:'mach', label:'CNC',        w:2.5, h:2.0, color:'#10b981'},
+ MILL:     {cat:'mach', label:'밀링',       w:2.0, h:1.8, color:'#8b5cf6'},
+ CMM:      {cat:'insp', label:'3차원측정기', w:2.0, h:3.0, color:'#ef4444'},
+ VISION:   {cat:'insp', label:'비젼측정기', w:1.2, h:1.0, color:'#ec4899'},
+ LEAK:     {cat:'insp', label:'LEAK TEST기',w:1.2, h:0.8, color:'#14b8a6'}
+};
+/* 장비 평면(위에서 본) 그림 — 기본 크기 기준 10cm 단위 좌표, 위쪽 = 정면 */
+const ST = 'stroke="#475569" stroke-width=".25"';
+const ART = {
+ MCT: [25,22, c=>`<rect x="1" y="2.5" width="19" height="17.5" rx="1" fill="#e2e8f0" ${ST}/>
+  <rect x="3" y=".6" width="15" height="2.4" rx=".4" fill="#bfdbfe" ${ST}/><line x1="10.5" y1=".6" x2="10.5" y2="3" ${ST}/>
+  <rect x="6.5" y="6.5" width="8" height="8" rx=".6" fill="#94a3b8" ${ST}/><circle cx="10.5" cy="10.5" r="2.4" fill="#475569"/><circle cx="10.5" cy="10.5" r=".9" fill="${c}"/>
+  <rect x="6" y="19.6" width="9" height="2.2" fill="#94a3b8" ${ST}/><path d="M7 19.6v2.2M8.5 19.6v2.2M10 19.6v2.2M11.5 19.6v2.2M13 19.6v2.2" ${ST}/>
+  <rect x="20.4" y="3.5" width="4.2" height="8" rx=".4" fill="#334155"/><rect x="21" y="4.2" width="3" height="2.6" fill="${c}"/>
+  <circle cx="21.7" cy="8.6" r=".45" fill="#fbbf24"/><circle cx="23.2" cy="8.6" r=".45" fill="#ef4444"/><rect x="21" y="9.7" width="3" height="1.1" fill="#64748b"/>`],
+ HORI: [35,30, c=>`<rect x="1" y="8" width="26" height="21" rx="1" fill="#e2e8f0" ${ST}/>
+  <rect x="2.5" y=".6" width="10" height="7" fill="#cbd5e1" ${ST}/><rect x="14" y=".6" width="10" height="7" fill="#cbd5e1" ${ST}/>
+  <path d="M2.5 2.9h10M2.5 5.2h10M14 2.9h10M14 5.2h10" ${ST}/>
+  <circle cx="13.5" cy="15.5" r="5.2" fill="#cbd5e1" ${ST}/><rect x="10" y="12" width="7" height="7" fill="#94a3b8" ${ST}/>
+  <rect x="9.5" y="22" width="8" height="6" fill="#475569"/><circle cx="13.5" cy="22" r="1.2" fill="${c}"/>
+  <circle cx="31" cy="20" r="3.6" fill="#cbd5e1" ${ST}/><circle cx="31" cy="20" r="2.4" fill="none" stroke="${c}" stroke-width=".6" stroke-dasharray=".6 .6"/>
+  <rect x="28" y="5" width="6" height="8.5" rx=".4" fill="#334155"/><rect x="28.7" y="5.8" width="4.6" height="3" fill="${c}"/><circle cx="29.6" cy="10.6" r=".5" fill="#fbbf24"/><circle cx="31.3" cy="10.6" r=".5" fill="#ef4444"/>`],
+ LATHE: [30,18, c=>`<rect x="1" y="5" width="28" height="9" fill="#e2e8f0" ${ST}/><path d="M8 6.5h20M8 12.5h20" ${ST}/>
+  <rect x="1" y="2.5" width="7" height="13" rx=".5" fill="#94a3b8" ${ST}/>
+  <circle cx="9.7" cy="9.5" r="3.6" fill="#cbd5e1" ${ST}/><circle cx="9.7" cy="9.5" r="1" fill="#475569"/>
+  <path d="M9.7 6.2v2M9.7 10.8v2M6.8 11.1l1.7-1M12.6 7.9l-1.7 1" stroke="#334155" stroke-width=".6"/>
+  <rect x="14" y="3" width="5.5" height="12" fill="#cbd5e1" ${ST}/><rect x="15.5" y="7.5" width="2.5" height="2.5" fill="${c}"/><circle cx="16.7" cy="15.9" r="1.3" fill="none" ${ST}/>
+  <rect x="23" y="6.3" width="5" height="6.4" rx=".5" fill="#94a3b8" ${ST}/><rect x="21.8" y="8.8" width="1.2" height="1.4" fill="#64748b"/>
+  <rect x="2" y="16" width="5" height="1.8" fill="#334155"/><path d="M1 15.2h28" stroke="#64748b" stroke-width=".3"/>`],
+ CNC: [25,20, c=>`<rect x="1" y="2.5" width="18" height="16.5" rx="1" fill="#e2e8f0" ${ST}/>
+  <rect x="3" y=".6" width="14" height="2.4" rx=".4" fill="#bfdbfe" ${ST}/>
+  <rect x="2" y="6" width="5" height="9" fill="#94a3b8" ${ST}/><circle cx="8" cy="10.5" r="3.3" fill="#cbd5e1" ${ST}/><circle cx="8" cy="10.5" r=".9" fill="#475569"/>
+  <circle cx="14.5" cy="10.5" r="3" fill="#94a3b8" ${ST}/>${[0,45,90,135,180,225,270,315].map(a=>`<rect x="14" y="6.9" width="1" height="1.3" fill="${c}" transform="rotate(${a} 14.5 10.5)"/>`).join('')}
+  <rect x="19.6" y="3.5" width="4.6" height="8" rx=".4" fill="#334155"/><rect x="20.2" y="4.2" width="3.4" height="2.6" fill="${c}"/><circle cx="21" cy="8.6" r=".45" fill="#fbbf24"/><circle cx="22.7" cy="8.6" r=".45" fill="#ef4444"/>`],
+ MILL: [20,18, c=>`<rect x="6" y="11" width="8" height="6.5" fill="#94a3b8" ${ST}/>
+  <rect x="6.5" y="3" width="7" height="10" fill="#cbd5e1" ${ST}/>
+  <rect x="1.5" y="6" width="17" height="4.6" fill="#e2e8f0" ${ST}/><path d="M2 7.2h16M2 8.3h16M2 9.4h16" stroke="#94a3b8" stroke-width=".3"/>
+  <circle cx="10" cy="12.6" r="2.8" fill="#64748b" ${ST}/><circle cx="10" cy="12.6" r="1" fill="${c}"/>
+  <circle cx="1" cy="8.3" r="1" fill="none" stroke="#334155" stroke-width=".4"/><circle cx="19" cy="8.3" r="1" fill="none" stroke="#334155" stroke-width=".4"/>
+  <circle cx="10" cy="1.5" r="1.2" fill="none" stroke="#334155" stroke-width=".4"/><path d="M10 2.7v.3" ${ST}/>`],
+ CMM: [20,30, c=>`<rect x="2" y="2" width="16" height="26" rx=".5" fill="#6b7280" ${ST}/>
+  ${[[5,6],[12,9],[7,15],[14,19],[4,23],[10,25],[15,4]].map(([x,y])=>`<circle cx="${x}" cy="${y}" r=".3" fill="#9ca3af"/>`).join('')}
+  <rect x=".5" y="1" width="1.5" height="28" fill="#cbd5e1" ${ST}/><rect x="18" y="1" width="1.5" height="28" fill="#cbd5e1" ${ST}/>
+  <rect x="6" y="18" width="6" height="4" fill="#d1d5db" ${ST}/>
+  <rect x=".3" y="11.5" width="19.4" height="3.6" rx=".3" fill="#f1f5f9" ${ST}/>
+  <rect x="7.8" y="10.5" width="4.4" height="5.6" rx=".3" fill="${c}" ${ST}/><circle cx="10" cy="13.3" r="1" fill="#1e293b"/><circle cx="10" cy="13.3" r=".35" fill="#fff"/>`],
+ VISION: [12,10, c=>`<rect x=".8" y="1" width="10.4" height="8.4" rx=".6" fill="#e2e8f0" ${ST}/>
+  <rect x="2.3" y="2" width="6.4" height="5" fill="#bae6fd" ${ST}/><path d="M2.3 4.5h6.4M5.5 2v5" stroke="#7dd3fc" stroke-width=".2"/>
+  <rect x="3.5" y="7.4" width="4" height="2" fill="#64748b" ${ST}/>
+  <circle cx="5.5" cy="4.5" r="1.3" fill="#1e293b"/><circle cx="5.5" cy="4.5" r=".55" fill="${c}"/>
+  <circle cx="10" cy="8" r=".6" fill="#334155"/>`],
+ LEAK: [12,8, c=>`<rect x=".5" y=".5" width="11" height="7" rx=".5" fill="#e2e8f0" ${ST}/>
+  <circle cx="3.8" cy="4" r="2.9" fill="#cbd5e1" ${ST}/><circle cx="3.8" cy="4" r="1.9" fill="${c}" fill-opacity=".35" ${ST}/>
+  <circle cx="8.8" cy="2.4" r="1.4" fill="#fff" ${ST}/><path d="M8.8 2.4l.8-.7" stroke="#ef4444" stroke-width=".25"/>
+  <rect x="7.3" y="4.4" width="3.6" height="2.6" rx=".3" fill="#334155"/><circle cx="8.2" cy="5.7" r=".4" fill="#22c55e"/><circle cx="9.9" cy="5.7" r=".4" fill="#ef4444"/>`]
+};
+function artSvg(i, x, y, w, h){
+ const ph = D.photos && D.photos[i.type];
+ if(ph) return `<svg x="${x}" y="${y}" width="${w}" height="${h}" viewBox="0 0 100 100" preserveAspectRatio="none" pointer-events="none"><rect width="100" height="100" fill="#fff"/></svg><image href="${ph}" x="${x}" y="${y}" width="${w}" height="${h}" preserveAspectRatio="xMidYMid meet" pointer-events="none"/>`;
+ const a = ART[i.type]; if(!a) return '';
+ return `<svg x="${x}" y="${y}" width="${w}" height="${h}" viewBox="0 0 ${a[0]} ${a[1]}" preserveAspectRatio="none" pointer-events="none">${a[2](i.color)}</svg>`;
+}
+const DOORS = {
+ SWING:   {label:'여닫이문', w:0.9, color:'#b45309'},
+ DOUBLE:  {label:'양개문',   w:1.8, color:'#b45309'},
+ SLIDE:   {label:'미닫이문', w:1.8, color:'#0369a1'},
+ SHUTTER: {label:'셔터',     w:4.0, color:'#475569'}
+};
+function doorDepth(d){ return d.dtype==='SWING' ? d.w : d.dtype==='DOUBLE' ? d.w/2 : d.dtype==='SLIDE' ? 0.3 : 0.5; }
+// px 좌표 기준. 위쪽 변 = 벽, 아래쪽 = 열리는 방향(안쪽)
+function doorArt(d, x, y, w, h){
+ const c = d.color, cx = x+w/2, jamb = `<rect x="${x-3}" y="${y-4}" width="3" height="8" fill="#334155"/><rect x="${x+w}" y="${y-4}" width="3" height="8" fill="#334155"/>`;
+ let a = `<line x1="${x}" y1="${y}" x2="${x+w}" y2="${y}" stroke="#fff" stroke-width="7"/>`;
+ if(d.dtype==='SWING'){
+  a += `<path d="M${x+w} ${y} A${w} ${w} 0 0 1 ${x} ${y+w}" fill="${c}" fill-opacity=".07" stroke="${c}" stroke-width="1.2" stroke-dasharray="4 3"/>`;
+  a += `<line x1="${x}" y1="${y}" x2="${x}" y2="${y+w}" stroke="${c}" stroke-width="3"/>`;
+ }else if(d.dtype==='DOUBLE'){
+  const hw = w/2;
+  a += `<path d="M${x+hw} ${y} A${hw} ${hw} 0 0 1 ${x} ${y+hw}" fill="${c}" fill-opacity=".07" stroke="${c}" stroke-width="1.2" stroke-dasharray="4 3"/>`;
+  a += `<path d="M${x+hw} ${y} A${hw} ${hw} 0 0 0 ${x+w} ${y+hw}" fill="${c}" fill-opacity=".07" stroke="${c}" stroke-width="1.2" stroke-dasharray="4 3"/>`;
+  a += `<line x1="${x}" y1="${y}" x2="${x}" y2="${y+hw}" stroke="${c}" stroke-width="3"/><line x1="${x+w}" y1="${y}" x2="${x+w}" y2="${y+hw}" stroke="${c}" stroke-width="3"/>`;
+ }else if(d.dtype==='SLIDE'){
+  a += `<rect x="${x}" y="${y+1}" width="${w*0.55}" height="3" fill="${c}"/><rect x="${x+w*0.45}" y="${y+5}" width="${w*0.55}" height="3" fill="${c}"/>`;
+  a += `<path d="M${cx-6} ${y+h-1}h12m-3 -2.5l3 2.5l-3 2.5" fill="none" stroke="${c}" stroke-width="1"/>`;
+ }else{
+  a += `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${c}" fill-opacity=".12"/>`;
+  a += `<line x1="${x}" y1="${y+2}" x2="${x+w}" y2="${y+2}" stroke="${c}" stroke-width="4" stroke-dasharray="6 2"/>`;
+  a += `<path d="M${x} ${y+h}h${w}" stroke="${c}" stroke-width="1" stroke-dasharray="2 3"/>`;
+ }
+ return a + jamb;
+}
+let D = null, sel = null, snap = true, undo = [];
+let view = {x:40, y:40, z:1};
+const $ = id => document.getElementById(id);
+const svg = $('svg');
+
+/* ---------- 저장/로드 ---------- */
+function blank(){ return {title:'NTL 공장 설비 배치도', floorW:60, floorH:35, items:[]}; }
+function load(){
+ try{ const t = localStorage.getItem(KEY); if(t){ const d = JSON.parse(t); if(d && Array.isArray(d.items)) return d; } }catch(e){}
+ return blank();
+}
+let saveT = 0;
+function save(){ clearTimeout(saveT); saveT = setTimeout(()=>{ try{ localStorage.setItem(KEY, JSON.stringify(D)); }catch(e){} }, 300); }
+function pushUndo(){ undo.push(JSON.stringify(D)); if(undo.length>50) undo.shift(); }
+function toast(m){ const t=$('toast'); t.textContent=m; t.classList.add('on'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('on'),1600); }
+function uid(){ return 'i'+Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
+const esc = s => String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const r1 = v => Math.round(v*10)/10;
+const sn = v => snap ? Math.round(v*2)/2 : r1(v);   // 0.5m 격자
+
+/* ---------- 팔레트 ---------- */
+function buildPalette(){
+ ['mach','insp'].forEach(cat=>{
+  const box = $(cat==='mach'?'palMach':'palInsp'); box.innerHTML='';
+  Object.entries(TYPES).filter(([,t])=>t.cat===cat).forEach(([k,t])=>{
+   const b = document.createElement('button'); b.className='pal'; b.dataset.type=k;
+   const ic = ART[k], ph = D.photos && D.photos[k];
+   const icon = ph ? `<img src="${ph}" style="width:30px;height:24px;object-fit:contain;flex:none">`
+     : `<svg width="30" height="24" viewBox="0 0 ${ic[0]} ${ic[1]}" style="flex:none">${ic[2](t.color)}</svg>`;
+   b.innerHTML = `${icon}<span>${t.label}</span><small>${t.w}×${t.h}</small>`;
+   b.onclick = ()=>addEq(k); box.appendChild(b);
+  });
+ });
+ const pd = $('palDoor'); pd.innerHTML='';
+ Object.entries(DOORS).forEach(([k,t])=>{
+  const b = document.createElement('button'); b.className='pal';
+  const fake = {dtype:k, color:t.color, w:t.w}; const pw = 26, ph = doorDepth({dtype:k,w:t.w})/t.w*pw;
+  b.innerHTML = `<svg width="30" height="24" viewBox="-3 -6 32 30" style="flex:none"><line x1="-3" y1="0" x2="29" y2="0" stroke="#334155" stroke-width="2"/>${doorArt(fake,0,0,pw,Math.max(ph,4))}</svg><span>${t.label}</span><small>${t.w}m</small>`;
+  b.onclick = ()=>addDoor(k); pd.appendChild(b);
+ });
+ document.querySelector('[data-zone]').onclick = addZone;
+}
+function nextNo(type){
+ const nos = D.items.filter(i=>i.type===type).map(i=>parseInt(i.no)||0);
+ return nos.length ? Math.max(...nos)+1 : 1;
+}
+function centerPos(w,h){
+ const r = svg.getBoundingClientRect();
+ const c = toWorld(r.left + r.width/2, r.top + r.height/2);
+ let x = sn(Math.min(Math.max(c.x - w/2, 0), D.floorW - w));
+ let y = sn(Math.min(Math.max(c.y - h/2, 0), D.floorH - h));
+ // 겹치지 않게 살짝 밀기
+ for(let k=0;k<20 && D.items.some(i=>i.kind==='eq' && Math.abs(i.x-x)<0.3 && Math.abs(i.y-y)<0.3);k++){ x=sn(x+1); y=sn(y+1); }
+ return {x,y};
+}
+function addEq(type){
+ pushUndo();
+ const t = TYPES[type], p = centerPos(t.w,t.h);
+ const it = {id:uid(), kind:'eq', type, no:nextNo(type), x:p.x, y:p.y, w:t.w, h:t.h, rot:0, color:t.color, memo:''};
+ D.items.push(it); sel = it.id; changed();
+}
+function addZone(){
+ pushUndo();
+ const n = D.items.filter(i=>i.kind==='zone').length + 1;
+ const p = centerPos(10,8);
+ const it = {id:uid(), kind:'zone', name:'장소 '+n, x:p.x, y:p.y, w:10, h:8, rot:0, color:'#dbeafe', memo:''};
+ D.items.push(it); sel = it.id; changed();
+}
+function addDoor(dtype){
+ pushUndo();
+ const t = DOORS[dtype], n = D.items.filter(i=>i.kind==='door').length + 1;
+ const d = {id:uid(), kind:'door', dtype, name:(dtype==='SHUTTER'?'셔터 ':'출입구 ')+n, w:t.w, rot:0, flip:false, color:t.color, memo:''};
+ d.h = doorDepth(d); const p = centerPos(d.w, d.h); d.x=p.x; d.y=p.y;
+ D.items.push(d); sel = d.id; changed(); toast('벽 근처로 끌면 벽에 자동으로 붙습니다');
+}
+// 문을 가장 가까운 벽(공장 외벽·장소 경계)에 붙이고 방향 자동 설정
+function snapDoor(i){
+ const cx=i.x+i.w/2, cy=i.y+i.h/2, L=[];
+ [{x:0,y:0,w:D.floorW,h:D.floorH}, ...D.items.filter(z=>z.kind==='zone')].forEach(r=>{
+  L.push({o:'h',v:r.y,a:r.x,b:r.x+r.w,rot:0},{o:'h',v:r.y+r.h,a:r.x,b:r.x+r.w,rot:180},
+         {o:'v',v:r.x,a:r.y,b:r.y+r.h,rot:270},{o:'v',v:r.x+r.w,a:r.y,b:r.y+r.h,rot:90});
+ });
+ let best=null, bd=Math.max(i.h,0.5)+0.6;
+ L.forEach(l=>{
+  const along = l.o==='h'?cx:cy, d = Math.abs((l.o==='h'?cy:cx) - l.v);
+  if(along < l.a-0.3 || along > l.b+0.3) return;
+  if(d < bd){ bd=d; best=l; }
+ });
+ if(!best) return false;
+ const cl = (v,a,b)=> b<a ? (a+b)/2 : Math.min(Math.max(v,a),b);
+ let ncx=cx, ncy=cy;
+ if(best.o==='h'){ ncy = best.rot===0 ? best.v+i.h/2 : best.v-i.h/2; ncx = cl(sn(cx), best.a+i.w/2, best.b-i.w/2); }
+ else { ncx = best.rot===270 ? best.v+i.h/2 : best.v-i.h/2; ncy = cl(sn(cy), best.a+i.w/2, best.b-i.w/2); }
+ i.rot = best.rot; i.x = ncx - i.w/2; i.y = ncy - i.h/2;
+ return true;
+}
+// 열림 방향 안/밖 반전 (벽 위치는 유지)
+function flipInOut(i){
+ const t = (i.rot||0)*Math.PI/180, dx = -Math.sin(t), dy = Math.cos(t);
+ i.x -= dx*i.h; i.y -= dy*i.h; i.rot = ((i.rot||0)+180)%360;
+}
+function eqName(i){ return `${TYPES[i.type]?.label||i.type} ${i.no}호기`; }
+
+/* ---------- 렌더 ---------- */
+function render(){
+ const W = D.floorW*S, H = D.floorH*S;
+ let g = '';
+ // 그리드
+ g += `<defs><pattern id="gs" width="${S/2}" height="${S/2}" patternUnits="userSpaceOnUse"><path d="M ${S/2} 0 L 0 0 0 ${S/2}" fill="none" stroke="#eef1f5" stroke-width="1"/></pattern>
+ <pattern id="gl" width="${S*5}" height="${S*5}" patternUnits="userSpaceOnUse"><rect width="${S*5}" height="${S*5}" fill="url(#gs)"/><path d="M ${S*5} 0 L 0 0 0 ${S*5}" fill="none" stroke="#d5dbe3" stroke-width="1"/></pattern></defs>`;
+ g += `<g id="world" transform="translate(${view.x},${view.y}) scale(${view.z})">`;
+ g += `<rect id="floor" x="0" y="0" width="${W}" height="${H}" fill="#fff" stroke="#334155" stroke-width="3"/>`;
+ g += `<rect x="0" y="0" width="${W}" height="${H}" fill="url(#gl)" pointer-events="none"/>`;
+ // 눈금(5m)
+ for(let m=0;m<=D.floorW;m+=5) g+=`<text x="${m*S}" y="-8" font-size="11" text-anchor="middle" fill="#64748b">${m}m</text>`;
+ for(let m=5;m<=D.floorH;m+=5) g+=`<text x="-8" y="${m*S+4}" font-size="11" text-anchor="end" fill="#64748b">${m}</text>`;
+ g += `<text x="0" y="-26" font-size="18" font-weight="bold" fill="#1e293b">${esc(D.title)}</text>`;
+ const zones = D.items.filter(i=>i.kind==='zone'), eqs = D.items.filter(i=>i.kind==='eq'), doors = D.items.filter(i=>i.kind==='door');
+ [...zones, ...eqs, ...doors].forEach(i=>{ g += itemSvg(i); });
+ g += `</g>`;
+ svg.innerHTML = g;
+}
+function itemSvg(i){
+ const x=i.x*S, y=i.y*S, w=i.w*S, h=i.h*S, cx=x+w/2, cy=y+h/2, on = i.id===sel;
+ let s = `<g data-id="${i.id}" transform="rotate(${i.rot||0} ${cx} ${cy})" style="cursor:move">`;
+ if(i.kind==='zone'){
+  s += `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${i.color}" fill-opacity=".55" stroke="${on?'#f97316':'#3b82f6'}" stroke-width="${on?3:2}" stroke-dasharray="8 5" rx="2"/>`;
+  s += `<text x="${x+8}" y="${y+20}" font-size="15" font-weight="bold" fill="#1e3a8a" pointer-events="none">${esc(i.name)}</text>`;
+  s += `<text x="${x+w-6}" y="${y+h-6}" font-size="10" text-anchor="end" fill="#64748b" pointer-events="none">${i.w}×${i.h}m</text>`;
+ }else if(i.kind==='door'){
+  s += `<rect x="${x}" y="${y-5}" width="${w}" height="${h+5}" fill="#fff" fill-opacity=".01"/>`; // 클릭 영역
+  s += i.flip ? `<g transform="translate(${2*cx} 0) scale(-1 1)">${doorArt(i,x,y,w,h)}</g>` : doorArt(i,x,y,w,h);
+  if(i.name){
+   const ty = i.dtype==='SLIDE' ? y+h+12 : cy+4;
+   s += `<text x="${cx}" y="${ty}" font-size="11" font-weight="bold" text-anchor="middle" fill="${i.color}" stroke="#fff" stroke-width="3" paint-order="stroke" transform="rotate(${-(i.rot||0)} ${cx} ${ty-4})" pointer-events="none">${esc(i.name)}</text>`;
+  }
+  if(on) s += `<rect x="${x-4}" y="${y-6}" width="${w+8}" height="${h+8}" fill="none" stroke="#f97316" stroke-width="2" stroke-dasharray="5 3" pointer-events="none"/>`;
+ }else{
+  const t = TYPES[i.type]||{label:i.type};
+  const fs = Math.max(8, Math.min(13, w/8, h/3.2));
+  if(D.art !== false){
+   s += `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#fff" fill-opacity=".01"/>`; // 클릭 영역
+   s += artSvg(i, x, y, w, h);
+   const lab = `${t.label} ${i.no}호기`;
+   const tw = f => [...lab].reduce((n,ch)=>n+(/[가-힣]/.test(ch)?f:f*0.62),0)+8;
+   let f = fs, inside = tw(f) <= w-4 && h >= 50;
+   if(!inside) f = 10;
+   const lw = tw(f), lh = f+5, ly = inside ? y+h-lh-2 : y+h+3;
+   s += `<rect x="${cx-lw/2}" y="${ly}" width="${lw}" height="${lh}" rx="3" fill="${i.color}" fill-opacity=".92" pointer-events="none"/>`;
+   s += `<text x="${cx}" y="${ly+lh/2+f*0.36}" font-size="${f}" font-weight="bold" text-anchor="middle" fill="#fff" pointer-events="none">${esc(lab)}</text>`;
+   s += `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="none" stroke="${on?'#f97316':'#94a3b8'}" stroke-width="${on?3:1}" stroke-dasharray="${on?'':'3 3'}" pointer-events="none"/>`;
+  }else{
+  s += `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${i.color}" fill-opacity=".18" stroke="${on?'#f97316':i.color}" stroke-width="${on?3:2}" rx="3"/>`;
+  s += `<rect x="${x}" y="${y}" width="${w}" height="${Math.min(6,h/4)}" fill="${i.color}" pointer-events="none"/>`; // 정면(조작부) 표시
+  s += `<text x="${cx}" y="${cy-fs*0.2}" font-size="${fs}" font-weight="bold" text-anchor="middle" fill="#0f172a" pointer-events="none">${esc(t.label)}</text>`;
+  s += `<text x="${cx}" y="${cy+fs*1.05}" font-size="${fs*0.95}" text-anchor="middle" fill="${i.color}" font-weight="bold" pointer-events="none">${esc(i.no)}호기</text>`;
+  }
+ }
+ if(on){
+  s += `<rect data-h="rs" x="${x+w-7}" y="${y+h-7}" width="14" height="14" fill="#fff" stroke="#f97316" stroke-width="2" style="cursor:nwse-resize"/>`;
+ }
+ return s + `</g>`;
+}
+
+/* ---------- 속성 패널 ---------- */
+function renderProp(){
+ const i = D.items.find(v=>v.id===sel), P = $('prop');
+ if(!i){ P.innerHTML = '<div class="empty">설비나 장소를 선택하세요.<br>왼쪽 목록에서 클릭하면 화면 가운데에 추가되고, 호기는 자동으로 다음 번호가 붙습니다.</div>'; return; }
+ let h = '';
+ if(i.kind==='zone'){
+  h += `<label>장소명</label><input id="pName" value="${esc(i.name)}">`;
+ }else if(i.kind==='door'){
+  h += `<label>문 종류</label><select id="pDType">${Object.entries(DOORS).map(([k,t])=>`<option value="${k}" ${k===i.dtype?'selected':''}>${t.label}</option>`).join('')}</select>`;
+  h += `<label>이름 (비우면 표시 안 함)</label><input id="pName" value="${esc(i.name)}">`;
+ }else{
+  h += `<label>설비 종류</label><select id="pType">${Object.entries(TYPES).map(([k,t])=>`<option value="${k}" ${k===i.type?'selected':''}>${t.label}</option>`).join('')}</select>`;
+  h += `<label>호기</label><input id="pNo" type="number" min="0" value="${esc(i.no)}">`;
+  const hasPh = D.photos && D.photos[i.type];
+  h += `<label>장비 사진 (${esc(TYPES[i.type].label)} 전체에 적용)</label><div class="btns" style="margin-top:0"><button id="aPhoto">${hasPh?'사진 변경':'사진 등록'}</button>${hasPh?'<button id="aPhotoDel">기본 그림으로</button>':''}</div>`;
+ }
+ h += i.kind==='door' ? `<label>문 폭(m)</label><input id="pW" type="number" step="0.1" min="0.6" value="${i.w}">`
+  : `<div class="row"><div><label>가로(m)</label><input id="pW" type="number" step="0.1" min="0.3" value="${i.w}"></div><div><label>세로(m)</label><input id="pH" type="number" step="0.1" min="0.3" value="${i.h}"></div></div>`;
+ h += `<div class="row"><div><label>X(m)</label><input id="pX" type="number" step="0.5" value="${i.x}"></div><div><label>Y(m)</label><input id="pY" type="number" step="0.5" value="${i.y}"></div></div>`;
+ h += `<div class="row"><div><label>회전(°)</label><input id="pRot" type="number" step="90" value="${i.rot||0}"></div><div><label>색상</label><input id="pColor" type="color" value="${i.color}" style="height:30px;padding:2px"></div></div>`;
+ h += `<label>비고</label><textarea id="pMemo" rows="2" placeholder="${i.kind==='zone'?'용도 등':'설비번호·모델명 등'}">${esc(i.memo)}</textarea>`;
+ if(i.kind==='door') h += `<div class="btns"><button id="aFlipIO">열림 안/밖 반전</button>${i.dtype==='SWING'?'<button id="aFlipLR">경첩 좌/우 반전</button>':''}</div>`;
+ h += `<div class="btns"><button id="aRot">↻ 90°</button><button id="aDup">복제</button><button id="aFront">맨 앞</button><button id="aDel" style="color:#dc2626">삭제</button></div>`;
+ P.innerHTML = h;
+ const bind = (id, fn) => { const el=$(id); if(!el) return; el.onfocus=()=>pushUndo(); el.oninput = ()=>{ fn(el.value); render(); renderSummary(); save(); }; };
+ bind('pName', v=>i.name=v);
+ bind('pNo', v=>i.no=parseInt(v)||0);
+ bind('pW', v=>{ const n=parseFloat(v); if(n>0){ if(i.kind==='door'){ const cx=i.x+i.w/2, cy=i.y+i.h/2; i.w=n; i.h=doorDepth(i); i.x=cx-i.w/2; i.y=cy-i.h/2; if(snap) snapDoor(i); } else i.w=n; } });
+ bind('pH', v=>{ const n=parseFloat(v); if(n>0) i.h=n; });
+ bind('pX', v=>{ const n=parseFloat(v); if(!isNaN(n)) i.x=n; });
+ bind('pY', v=>{ const n=parseFloat(v); if(!isNaN(n)) i.y=n; });
+ bind('pRot', v=>i.rot=((parseFloat(v)||0)%360+360)%360);
+ bind('pColor', v=>i.color=v);
+ bind('pMemo', v=>i.memo=v);
+ if($('pType')) $('pType').onchange = e=>{
+  pushUndo(); const t=TYPES[e.target.value]; i.type=e.target.value; i.color=t.color; i.w=t.w; i.h=t.h; i.no=nextNo(i.type); changed();
+ };
+ if($('pDType')) $('pDType').onchange = e=>{
+  pushUndo(); const t=DOORS[e.target.value]; i.dtype=e.target.value; i.color=t.color; i.w=t.w; i.h=doorDepth(i); snapDoor(i); changed();
+ };
+ if($('aFlipIO')) $('aFlipIO').onclick = ()=>{ pushUndo(); flipInOut(i); changed(); };
+ if($('aFlipLR')) $('aFlipLR').onclick = ()=>{ pushUndo(); i.flip=!i.flip; changed(); };
+ if($('aPhoto')) $('aPhoto').onclick = ()=>pickPhoto(i.type);
+ if($('aPhotoDel')) $('aPhotoDel').onclick = ()=>{ pushUndo(); delete D.photos[i.type]; buildPalette(); changed(); };
+ $('aRot').onclick = rotateSel; $('aDup').onclick = dupSel; $('aDel').onclick = delSel;
+ $('aFront').onclick = ()=>{ pushUndo(); D.items = D.items.filter(v=>v!==i).concat(i); changed(); };
+}
+function rotateSel(){ const i=D.items.find(v=>v.id===sel); if(!i) return; pushUndo(); i.rot=((i.rot||0)+90)%360; changed(); }
+function dupSel(){
+ const i=D.items.find(v=>v.id===sel); if(!i) return; pushUndo();
+ const c = {...i, id:uid(), x:sn(i.x+1), y:sn(i.y+1)};
+ if(c.kind==='eq') c.no = nextNo(c.type); else c.name = i.name+' (복사)';
+ D.items.push(c); sel=c.id; changed();
+}
+function delSel(){ const i=D.items.find(v=>v.id===sel); if(!i) return; pushUndo(); D.items=D.items.filter(v=>v!==i); sel=null; changed(); toast('삭제됨 (Ctrl+Z로 되돌리기)'); }
+
+/* ---------- 현황 ---------- */
+function zoneOf(e){
+ const cx=e.x+e.w/2, cy=e.y+e.h/2;
+ const zs = D.items.filter(z=>z.kind==='zone' && cx>=z.x && cx<=z.x+z.w && cy>=z.y && cy<=z.y+z.h);
+ return zs.length ? zs[zs.length-1].name : '미지정';
+}
+function renderSummary(){
+ const eqs = D.items.filter(i=>i.kind==='eq');
+ if(!eqs.length){ $('summary').innerHTML='<div class="empty">등록된 설비 없음</div>'; return; }
+ let h = '<table><tr><th>종류</th><th>대수</th></tr>';
+ Object.entries(TYPES).forEach(([k,t])=>{ const n=eqs.filter(e=>e.type===k).length; if(n) h+=`<tr><td><i style="display:inline-block;width:9px;height:9px;background:${t.color};border-radius:2px"></i> ${t.label}</td><td>${n}</td></tr>`; });
+ h += `<tr><th>합계</th><th>${eqs.length}</th></tr>`;
+ const nd = D.items.filter(i=>i.kind==='door').length; if(nd) h += `<tr><td>문·출입구</td><td>${nd}</td></tr>`;
+ h += `</table>`;
+ const byZ = {};
+ eqs.forEach(e=>{ (byZ[zoneOf(e)] ||= []).push(e); });
+ h += '<h3>장소별</h3>';
+ Object.entries(byZ).forEach(([z,list])=>{
+  list.sort((a,b)=>(a.type+String(a.no).padStart(4,'0')).localeCompare(b.type+String(b.no).padStart(4,'0')));
+  h += `<div style="margin-bottom:6px"><b>${esc(z)}</b> <span class="empty">(${list.length})</span><br>` +
+   list.map(e=>`<a href="#" data-pick="${e.id}" style="color:${e.color};text-decoration:none">${esc(eqName(e))}</a>`).join(', ') + '</div>';
+ });
+ $('summary').innerHTML = h;
+ $('summary').querySelectorAll('[data-pick]').forEach(a=>a.onclick=ev=>{ ev.preventDefault(); sel=a.dataset.pick; render(); renderProp(); });
+}
+function changed(){ render(); renderProp(); renderSummary(); save(); }
+
+/* ---------- 좌표/조작 ---------- */
+function toWorld(cx, cy){
+ const r = svg.getBoundingClientRect();
+ return { x: ((cx - r.left) - view.x)/view.z/S, y: ((cy - r.top) - view.y)/view.z/S };
+}
+function applyView(){ const w=$('world'); if(w) w.setAttribute('transform',`translate(${view.x},${view.y}) scale(${view.z})`); }
+function zoomAt(f, cx, cy){
+ const r = svg.getBoundingClientRect();
+ if(cx==null){ cx=r.left+r.width/2; cy=r.top+r.height/2; }
+ const nz = Math.min(5, Math.max(0.15, view.z*f)); f = nz/view.z;
+ const px=cx-r.left, py=cy-r.top;
+ view.x = px - (px-view.x)*f; view.y = py - (py-view.y)*f; view.z = nz; applyView();
+}
+function fit(){
+ const r = svg.getBoundingClientRect(), W=D.floorW*S, H=D.floorH*S;
+ view.z = Math.min((r.width-80)/W, (r.height-90)/H); view.z = Math.max(0.15, Math.min(5, view.z));
+ view.x = (r.width - W*view.z)/2; view.y = (r.height - H*view.z)/2 + 15; applyView();
+}
+
+let act = null; const ptrs = new Map();
+svg.addEventListener('pointerdown', e=>{
+ ptrs.set(e.pointerId, {x:e.clientX, y:e.clientY});
+ if(ptrs.size===2){ // 핀치 줌 시작
+  const [a,b] = [...ptrs.values()];
+  act = {mode:'pinch', d:Math.hypot(a.x-b.x,a.y-b.y), z:view.z}; return;
+ }
+ const g = e.target.closest('[data-id]');
+ const p = toWorld(e.clientX, e.clientY);
+ if(g){
+  const i = D.items.find(v=>v.id===g.dataset.id);
+  if(sel!==i.id){ sel=i.id; render(); renderProp(); }
+  pushUndo();
+  act = { mode: e.target.dataset.h==='rs' ? 'resize' : 'move', i, sx:p.x, sy:p.y, ox:i.x, oy:i.y, ow:i.w, oh:i.h, moved:false };
+ }else{
+  if(sel){ sel=null; render(); renderProp(); }
+  act = {mode:'pan', sx:e.clientX, sy:e.clientY, vx:view.x, vy:view.y}; svg.classList.add('panning');
+ }
+ svg.setPointerCapture(e.pointerId);
+});
+svg.addEventListener('pointermove', e=>{
+ if(ptrs.has(e.pointerId)) ptrs.set(e.pointerId, {x:e.clientX, y:e.clientY});
+ if(!act) return;
+ if(act.mode==='pinch'){
+  if(ptrs.size<2) return; const [a,b]=[...ptrs.values()];
+  const d = Math.hypot(a.x-b.x,a.y-b.y);
+  zoomAt((act.z*d/act.d)/view.z, (a.x+b.x)/2, (a.y+b.y)/2); return;
+ }
+ if(act.mode==='pan'){ view.x = act.vx + e.clientX - act.sx; view.y = act.vy + e.clientY - act.sy; applyView(); return; }
+ const p = toWorld(e.clientX, e.clientY), i = act.i;
+ let dx = p.x-act.sx, dy = p.y-act.sy;
+ if(act.mode==='move'){
+  i.x = sn(act.ox+dx); i.y = sn(act.oy+dy);
+  if(i.kind==='door' && snap) snapDoor(i);
+ }else if(i.kind==='door'){
+  const a = -(i.rot||0)*Math.PI/180, lx = dx*Math.cos(a)-dy*Math.sin(a);
+  i.w = Math.max(0.6, sn(act.ow+lx)); i.h = doorDepth(i);
+ }else{
+  // 회전된 항목은 로컬 좌표로 변환
+  const a = -(i.rot||0)*Math.PI/180, lx = dx*Math.cos(a)-dy*Math.sin(a), ly = dx*Math.sin(a)+dy*Math.cos(a);
+  i.w = Math.max(0.5, sn(act.ow+lx)); i.h = Math.max(0.5, sn(act.oh+ly));
+ }
+ act.moved = true;
+ // 해당 항목만 다시 그림 (성능)
+ const g = svg.querySelector(`[data-id="${i.id}"]`);
+ if(g){ const t=document.createElementNS('http://www.w3.org/2000/svg','g'); t.innerHTML=itemSvg(i); g.replaceWith(t.firstChild); }
+});
+function endPtr(e){
+ ptrs.delete(e.pointerId);
+ if(!act) return;
+ if(act.mode==='pinch'){ if(ptrs.size===0) act=null; return; }
+ svg.classList.remove('panning');
+ if(act.i){ if(act.moved){ renderProp(); renderSummary(); save(); } else undo.pop(); }
+ act = null;
+}
+svg.addEventListener('pointerup', endPtr);
+svg.addEventListener('pointercancel', endPtr);
+svg.addEventListener('wheel', e=>{ e.preventDefault(); zoomAt(e.deltaY<0?1.12:1/1.12, e.clientX, e.clientY); }, {passive:false});
+
+document.addEventListener('keydown', e=>{
+ const tag = document.activeElement.tagName;
+ if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT') return;
+ if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='z'){ e.preventDefault(); doUndo(); return; }
+ if(!sel) return;
+ const i = D.items.find(v=>v.id===sel); if(!i) return;
+ if(e.key==='Delete'||e.key==='Backspace'){ e.preventDefault(); delSel(); }
+ else if(e.key.toLowerCase()==='r'){ rotateSel(); }
+ else if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='d'){ e.preventDefault(); dupSel(); }
+ else if(e.key.startsWith('Arrow')){
+  e.preventDefault(); pushUndo(); const st = e.shiftKey?1:0.1;
+  if(e.key==='ArrowLeft') i.x=r1(i.x-st); if(e.key==='ArrowRight') i.x=r1(i.x+st);
+  if(e.key==='ArrowUp') i.y=r1(i.y-st); if(e.key==='ArrowDown') i.y=r1(i.y+st);
+  changed();
+ }else if(e.key==='Escape'){ sel=null; render(); renderProp(); }
+});
+function doUndo(){ if(!undo.length){ toast('되돌릴 작업 없음'); return; } D = JSON.parse(undo.pop()); if(!D.items.some(i=>i.id===sel)) sel=null; syncHead(); buildPalette(); changed(); }
+
+/* ---------- 상단 버튼 ---------- */
+function syncHead(){ $('bArt').textContent='표시: '+(D.art!==false?'그림':'색상'); $('title').value=D.title; $('floorW').value=D.floorW; $('floorH').value=D.floorH; }
+$('title').oninput = e=>{ D.title=e.target.value; render(); save(); };
+$('floorW').onchange = e=>{ pushUndo(); D.floorW=Math.max(10,parseFloat(e.target.value)||60); changed(); };
+$('floorH').onchange = e=>{ pushUndo(); D.floorH=Math.max(10,parseFloat(e.target.value)||35); changed(); };
+$('bZone').onclick = addZone;
+$('bUndo').onclick = doUndo;
+$('bSnap').onclick = ()=>{ snap=!snap; $('bSnap').textContent='격자맞춤: '+(snap?'켜짐':'꺼짐'); };
+$('bFit').onclick = fit;
+$('zIn').onclick = ()=>zoomAt(1.2); $('zOut').onclick = ()=>zoomAt(1/1.2);
+$('bNew').onclick = ()=>confirmBox('현재 도면을 지우고 새로 시작할까요? (먼저 내보내기로 백업 권장)', ()=>{ pushUndo(); D=blank(); sel=null; syncHead(); buildPalette(); changed(); fit(); });
+$('bPrint').onclick = ()=>{ fit(); try{ window.print(); }catch(err){ toast('이 화면에서는 인쇄가 막혀 있습니다. 이미지 저장 후 인쇄하세요.'); } };
+
+function closeM(id){ $(id).classList.remove('on'); }
+function confirmBox(msg, fn){ $('cfMsg').textContent=msg; $('mConfirm').classList.add('on'); $('cfYes').onclick=()=>{ closeM('mConfirm'); fn(); }; }
+$('jsonClose').onclick = ()=>closeM('mJson');
+$('bExport').onclick = ()=>{
+ $('mJsonT').textContent='내보내기 (백업)'; $('mJsonD').textContent='아래 내용을 복사해 메모장 등에 저장해 두면, 다른 PC에서 "불러오기"로 그대로 열 수 있습니다.';
+ $('jsonTxt').value = JSON.stringify(D, null, 1); $('jsonOk').style.display='none'; $('jsonFile').style.display='none'; $('jsonCopy').style.display=''; $('jsonSave').style.display='';
+ $('mJson').classList.add('on');
+};
+$('bImport').onclick = ()=>{
+ $('mJsonT').textContent='불러오기'; $('mJsonD').textContent='내보낸 내용을 붙여넣거나 .json 파일을 선택한 뒤 "불러오기"를 누르세요. 현재 도면은 바뀝니다(Ctrl+Z로 복구 가능).';
+ $('jsonTxt').value=''; $('jsonOk').style.display=''; $('jsonFile').style.display=''; $('jsonCopy').style.display='none'; $('jsonSave').style.display='none';
+ $('mJson').classList.add('on');
+};
+$('jsonCopy').onclick = async ()=>{
+ try{ await navigator.clipboard.writeText($('jsonTxt').value); toast('복사됨'); }
+ catch(e){ $('jsonTxt').select(); toast('Ctrl+C로 복사하세요'); }
+};
+$('jsonFile').onclick = ()=>$('jsonFileIn').click();
+$('jsonFileIn').onchange = e=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{$('jsonTxt').value=r.result;}; r.readAsText(f,'utf-8'); e.target.value=''; };
+$('jsonOk').onclick = ()=>{
+ try{
+  const d = JSON.parse($('jsonTxt').value);
+  if(!d || !Array.isArray(d.items)) throw 0;
+  pushUndo(); D = Object.assign(blank(), d); sel=null; syncHead(); buildPalette(); changed(); fit(); closeM('mJson'); toast('불러왔습니다');
+ }catch(e){ toast('형식이 올바르지 않습니다'); }
+};
+
+/* ---------- 이미지 저장 ---------- */
+$('bPng').onclick = ()=>{
+ const pad = 60, W = D.floorW*S, H = D.floorH*S, sc = 2;
+ const prevSel = sel; sel = null; render();
+ const world = $('world').innerHTML; sel = prevSel; render();
+ const defs = svg.querySelector('defs').outerHTML;
+ const legend = Object.entries(TYPES).map(([key,t],k)=>`<rect x="${k*120}" y="0" width="12" height="12" fill="${t.color}"/><text x="${k*120+17}" y="11" font-size="12">${t.label}</text>`).join('');
+ const total = W+pad*2, totalH = H+pad*2+30;
+ const src = `<svg xmlns="http://www.w3.org/2000/svg" width="${total*sc}" height="${totalH*sc}" viewBox="0 0 ${total} ${totalH}" font-family="Malgun Gothic, Apple SD Gothic Neo, sans-serif"><rect width="100%" height="100%" fill="#fff"/>${defs}<g transform="translate(${pad},${pad})">${world}</g><g transform="translate(${pad},${H+pad+14})">${legend}</g></svg>`;
+ const img = new Image();
+ img.onload = ()=>{
+  const c = document.createElement('canvas'); c.width=total*sc; c.height=totalH*sc;
+  c.getContext('2d').drawImage(img,0,0);
+  const url = c.toDataURL('image/png'); $('pngImg').src = url; $('mImg').classList.add('on');
+  $('pngDown').onclick = ()=>c.toBlob(b=>dl((D.title||'배치도')+'.png', b, url));
+ };
+ img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(src);
+};
+
+/* ---------- 파일 저장 (artifact downloads 기능 → 없으면 일반 다운로드) ---------- */
+let DL = null;
+try{ if(window.claude && claude.use) claude.use('downloads').then(n=>{ DL=n; }).catch(()=>{}); }catch(e){}
+async function dl(name, data, href){
+ if(DL){
+  try{ await DL.save({filename:name, data}); toast('저장됨'); return; }
+  catch(e){ if(e && e.code==='declined') return; }
+ }
+ try{
+  const u = href || URL.createObjectURL(data instanceof Blob ? data : new Blob([data],{type:'application/json'}));
+  const a=document.createElement('a'); a.href=u; a.download=name; document.body.appendChild(a); a.click(); a.remove();
+ }catch(e){}
+ toast('저장이 안 되면 복사 또는 이미지 오른쪽 클릭으로 저장하세요');
+}
+$('jsonSave').onclick = ()=>dl((D.title||'배치도')+'.json', $('jsonTxt').value);
+
+/* ---------- 장비 사진 ---------- */
+const photoIn = document.createElement('input'); photoIn.type='file'; photoIn.accept='image/*'; photoIn.style.display='none'; document.body.appendChild(photoIn);
+function pickPhoto(type){
+ photoIn.onchange = ()=>{
+  const f = photoIn.files[0]; photoIn.value=''; if(!f) return;
+  const r = new FileReader();
+  r.onload = ()=>{ const im = new Image(); im.onload = ()=>{
+    const m = 480, k = Math.min(1, m/Math.max(im.width, im.height));
+    const c = document.createElement('canvas'); c.width=Math.round(im.width*k); c.height=Math.round(im.height*k);
+    const x = c.getContext('2d'); x.fillStyle='#fff'; x.fillRect(0,0,c.width,c.height); x.drawImage(im,0,0,c.width,c.height);
+    pushUndo(); (D.photos ||= {})[type] = c.toDataURL('image/jpeg', 0.85);
+    buildPalette(); changed(); toast(TYPES[type].label+' 사진 등록됨');
+   }; im.onerror=()=>toast('이미지를 읽을 수 없습니다'); im.src = r.result; };
+  r.readAsDataURL(f);
+ };
+ photoIn.click();
+}
+$('bArt').onclick = ()=>{ D.art = (D.art===false); $('bArt').textContent = '표시: '+(D.art!==false?'그림':'색상'); changed(); };
+
+/* ---------- 시작 ---------- */
+D = load();
+buildPalette(); syncHead(); changed();
+requestAnimationFrame(fit);
+window.addEventListener('resize', ()=>{ clearTimeout(window._rz); window._rz=setTimeout(fit,200); });
+</script>
+</body>
+</html>
