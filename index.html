@@ -63,6 +63,34 @@ td:last-child,th:last-child{text-align:right}
 @media (max-width:900px){ #cmpView{flex-direction:column} }
 #toast{position:fixed;left:50%;top:60px;transform:translateX(-50%);background:#1e293b;color:#fff;padding:7px 14px;border-radius:6px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:20}
 #toast.on{opacity:.92}
+/* [추가] 의견(같이 보며 이야기) 패널 */
+#talkPanel{position:fixed;top:48px;right:0;bottom:0;width:340px;background:#fff;border-left:1px solid #dbe1e8;box-shadow:-4px 0 14px rgba(15,23,42,.12);display:none;flex-direction:column;z-index:9}
+#talkPanel.on{display:flex}
+.tp-h{display:flex;align-items:center;gap:6px;padding:9px 10px;border-bottom:1px solid #e2e8f0;background:#f8fafc}
+.tp-h b{font-size:14px}
+.tp-f{display:flex;align-items:center;gap:6px;padding:6px 10px;border-bottom:1px solid #eef1f5;font-size:12px;color:#64748b}
+.tp-f select{font:inherit;padding:3px 5px;border:1px solid #cbd5e1;border-radius:4px}
+#tpList{flex:1;overflow-y:auto;padding:8px 10px}
+.tp-it{border:1px solid #e2e8f0;border-radius:6px;padding:7px 8px;margin-bottom:7px;background:#fff}
+.tp-it.done{opacity:.6;background:#f8fafc}
+.tp-it.hi{border-color:#f97316;box-shadow:0 0 0 2px #fed7aa}
+.tp-m{font-size:12px;color:#334155;display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.tp-m small{color:#94a3b8}
+.tp-no{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;border-radius:10px;background:#dc2626;color:#fff;font-size:11px;font-weight:bold;padding:0 5px}
+.tp-it.done .tp-no{background:#94a3b8}
+.tp-t{white-space:pre-wrap;word-break:break-all;margin:5px 0;line-height:1.45}
+.tp-a{display:flex;gap:4px;flex-wrap:wrap}.tp-a button{padding:2px 7px;font-size:11px}
+.tp-new{border-top:1px solid #e2e8f0;padding:8px 10px;background:#f8fafc}
+.tp-new input,.tp-new textarea{width:100%;font:inherit;padding:5px 6px;border:1px solid #cbd5e1;border-radius:4px;margin-bottom:5px}
+.tp-new .btns{display:flex;gap:5px;align-items:center}
+#tpPos{font-size:11px;color:#c2410c}
+#tpPin.on{background:#f97316;color:#fff;border-color:#f97316}
+#rbar{position:absolute;left:50%;top:10px;transform:translateX(-50%);background:#fff7ed;border:1px solid #fdba74;color:#9a3412;padding:6px 10px;border-radius:6px;display:none;align-items:center;gap:8px;box-shadow:0 2px 8px rgba(0,0,0,.12);z-index:5;font-size:12px}
+#rbar.on{display:flex}
+#pickTip{position:absolute;left:50%;top:10px;transform:translateX(-50%);background:#1e293b;color:#fff;padding:6px 12px;border-radius:6px;display:none;z-index:5;font-size:12px}
+#pickTip.on{display:block}
+@media (max-width:900px){ #talkPanel{top:auto;left:0;width:100%;height:62vh;border-left:0;border-top:1px solid #dbe1e8;border-radius:10px 10px 0 0} }
+@media print{ #talkPanel,#rbar,#pickTip{display:none!important} }
 /* 모바일·태블릿 */
 @media (max-width:900px){
  #app{grid-template-columns:1fr;grid-template-rows:48px auto 1fr auto}
@@ -70,6 +98,7 @@ td:last-child,th:last-child{text-align:right}
  #left{border:0;border-bottom:1px solid #dbe1e8;max-height:none;display:flex;gap:5px;overflow-x:auto;padding:6px;white-space:nowrap}
  #left h3,#left .lg{display:none}
  #left .pal{width:auto;margin:0;flex:none}
+ #left>div:not(.prop){display:flex;gap:5px;flex:none}   /* [추가] 문·설비 버튼을 한 줄로 */
  #right{border:0;border-top:1px solid #dbe1e8;max-height:38vh}
  #hint{display:none}
 }
@@ -100,6 +129,7 @@ td:last-child,th:last-child{text-align:right}
  <button id="bSave" title="Ctrl+S">저장</button>
  <button id="bList">도면 목록</button>
  <button id="bCmp">전후 비교</button>
+ <button id="bTalk" title="도면에 위치를 찍어 의견 남기기 — QMS 사용자 모두 같이 봄">💬 의견 <span id="talkN"></span></button>
  <span id="stat"></span>
 </header>
 
@@ -122,6 +152,8 @@ td:last-child,th:last-child{text-align:right}
 <main id="stage">
  <svg id="svg" xmlns="http://www.w3.org/2000/svg"></svg>
  <div id="hint">클릭=추가 · 드래그=이동 · 모서리=크기 · 빈 곳 드래그=화면이동 · 휠=확대 · Shift+클릭/드래그=여러 개 선택 · Del=삭제 · R=회전 · Ctrl+D=복제</div>
+ <div id="rbar"><span id="rbarT"></span><button id="rbarLoad">새로 불러오기</button><button id="rbarHide">닫기</button></div>
+ <div id="pickTip">📍 의견을 남길 위치를 도면에서 누르세요 (Esc = 취소)</div>
  <div class="zoombar"><button id="zIn">＋</button><button id="zOut">－</button></div>
 </main>
 
@@ -163,12 +195,22 @@ td:last-child,th:last-child{text-align:right}
   이전 <select id="cA"></select> → 이후 <select id="cB"></select>
   <button id="cSide" class="on">나란히</button><button id="cOver">겹쳐보기</button>
   <span style="flex:1"></span>
-  <button id="cPng">이미지 저장</button><button id="cCsv">변경내역 CSV</button><button onclick="closeM('mCmp')">닫기</button>
+  <button id="cPng">이미지 저장</button><button id="cPpt" style="background:#C43E1C;color:#fff;border-color:#C43E1C">PPT 다운로드</button><button id="cCsv">변경내역 CSV</button><button onclick="closeM('mCmp')">닫기</button>
  </div>
  <div id="cmpView"></div>
  <div id="cmpDiff"></div>
 </div></div>
 <div id="toast"></div>
+<div id="talkPanel">
+ <div class="tp-h"><b>💬 의견</b><span id="tpTitle" class="empty"></span><span style="flex:1"></span><button id="tpClose">✕</button></div>
+ <div class="tp-f"><select id="tpFilter"><option value="open">미해결만</option><option value="all">전체</option></select><span id="tpCnt"></span></div>
+ <div id="tpList"></div>
+ <div class="tp-new" id="tpNew">
+  <input id="tpWho" placeholder="이름 (작성자)">
+  <textarea id="tpText" rows="3" placeholder="의견을 입력하세요 (예: 이 MCT는 통로 쪽으로 1m 옮기면 좋겠음)"></textarea>
+  <div class="btns"><button id="tpPin">📍 위치 찍기</button><span id="tpPos"></span><span style="flex:1"></span><button id="tpAdd" style="background:#1e3a5f;color:#fff;border-color:#1e3a5f">등록</button></div>
+ </div>
+</div>
 
 <script>
 'use strict';
@@ -409,7 +451,7 @@ function defsStr(){
  <marker id="arw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#dc2626"/></marker></defs>`;
 }
 function render(){
- svg.innerHTML = defsStr() + `<g id="world" transform="translate(${view.x},${view.y}) scale(${view.z})">${worldInner(D, true)}</g>`;
+ svg.innerHTML = defsStr() + `<g id="world" transform="translate(${view.x},${view.y}) scale(${view.z})">${worldInner(D, true)}${talkPins()}</g>`;
 }
 // 도면 내용(바닥·눈금·항목) — 다른 도면 데이터로도 그릴 수 있게 분리
 function worldInner(data, selId){
@@ -626,7 +668,7 @@ function renderSummary(){
  $('summary').innerHTML = h;
  $('summary').querySelectorAll('[data-pick]').forEach(a=>a.onclick=ev=>{ ev.preventDefault(); setSel(a.dataset.pick); render(); renderProp(); });
 }
-function changed(){ render(); renderProp(); renderSummary(); save(); }
+function changed(){ render(); renderProp(); renderSummary(); save(); try{ renderTalk(); }catch(_){} }
 
 /* ---------- 좌표/조작 ---------- */
 function toWorld(cx, cy){
@@ -654,6 +696,9 @@ svg.addEventListener('pointerdown', e=>{
   const [a,b] = [...ptrs.values()];
   act = {mode:'pinch', d:Math.hypot(a.x-b.x,a.y-b.y), z:view.z}; return;
  }
+ const tg = e.target.closest('[data-talk]');
+ if(tg && !Talk.pick){ ptrs.delete(e.pointerId); talkOpenItem(tg.dataset.talk); return; }
+ if(Talk.pick){ ptrs.delete(e.pointerId); const q = toWorld(e.clientX, e.clientY); Talk.pos = {x:r1(q.x), y:r1(q.y)}; talkPickOff(); render(); renderTalk(); setTimeout(()=>{ try{ $('tpText').focus(); }catch(_){} }, 50); return; }
  const g = e.target.closest('[data-id]');
  const p = toWorld(e.clientX, e.clientY);
  const add = e.shiftKey || e.ctrlKey || e.metaKey || selMode;
@@ -751,6 +796,7 @@ svg.addEventListener('wheel', e=>{ e.preventDefault(); zoomAt(e.deltaY<0?1.12:1/
 
 document.addEventListener('keydown', e=>{
  if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='s'){ e.preventDefault(); saveCurrent(false); return; }
+ if(e.key==='Escape' && Talk.pick){ talkPickOff(); return; }
  const tag = document.activeElement.tagName;
  if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT') return;
  if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='z'){ e.preventDefault(); doUndo(); return; }
@@ -781,7 +827,7 @@ $('bSnap').onclick = ()=>{ snap=!snap; $('bSnap').textContent='격자맞춤: '+(
 $('bFit').onclick = fit;
 $('zIn').onclick = ()=>zoomAt(1.2); $('zOut').onclick = ()=>zoomAt(1/1.2);
 $('bNew').onclick = ()=>{
- const go = ()=>{ pushUndo(); const ph = D.photos; loading=true; D=blank(); D.photos = Store.mode==='cloud' ? {...cloudPhotos} : (ph||{}); setSel(null); setCur(null); syncHead(); buildPalette(); changed(); loading=false; dirty=false; refreshStatus(); fit(); closeM('mList'); };
+ const go = ()=>{ pushUndo(); const ph = D.photos; loading=true; D=blank(); D.photos = Store.mode!=='local' ? {...cloudPhotos} : (ph||{}); setSel(null); setCur(null); curUpd=null; hideRemote(); renderTalk(); syncHead(); buildPalette(); changed(); loading=false; dirty=false; refreshStatus(); fit(); closeM('mList'); };
  dirty ? confirmBox('저장하지 않은 변경이 있습니다. 새 도면을 시작할까요?', go) : go();
 };
 $('bPrint').onclick = ()=>{ fit(); try{ window.print(); }catch(err){ toast('이 화면에서는 인쇄가 막혀 있습니다. 이미지 저장 후 인쇄하세요.'); } };
@@ -855,6 +901,9 @@ $('bArt').onclick = ()=>{ D.art = (D.art===false); $('bArt').textContent = '표�
 
 /* ---------- 도면 저장소 (클라우드 db → 없으면 이 브라우저) ---------- */
 const LKEY = 'ntl_layouts_v1', CKEY = 'ntl_layout_cur';
+// [추가] QMS 안(iframe)에서 열리면 QMS 공유 시트에 저장 — 모든 QMS 사용자가 같은 도면·의견을 봄
+const QB = (()=>{ try{ return (window.parent && window.parent!==window && window.parent.qmsLayoutBridge_) ? window.parent.qmsLayoutBridge_ : null; }catch(e){ return null; } })();
+let curUpd = null;   // 지금 열린 도면을 불러오거나 저장했을 때의 수정일시 (다른 사람 저장 감지용)
 let curId = null, dirty = false, loading = false, cloudPhotos = {};
 try{ curId = localStorage.getItem(CKEY) || null; dirty = localStorage.getItem('ntl_layout_dirty')==='1'; }catch(e){}
 function setCur(id){ curId = id; try{ id ? localStorage.setItem(CKEY,id) : localStorage.removeItem(CKEY); }catch(e){} }
@@ -864,6 +913,22 @@ const Store = {
  writeLocal(a){ try{ localStorage.setItem(LKEY, JSON.stringify(a)); return true; }catch(e){ return false; } },
  init(){
   this.list = this.readLocal(); refreshStatus();
+  if(QB){
+   this.mode = 'qms'; this.ready = false; refreshStatus();
+   let phSig = '';
+   QB.subscribe(st=>{
+    if(!st.ok){
+     if(st.ready && this.mode==='qms' && !this.ready){ this.mode='local'; this.list=this.readLocal(); this.ready=true; refreshStatus(); toast('공유 저장소를 쓸 수 없어 이 PC에 저장합니다'+(st.err?' ('+st.err+')':'')); }
+     return;
+    }
+    this.mode = 'qms'; this.ready = !!st.ready; this.list = st.list || [];
+    const sig = Object.keys(st.photos||{}).sort().map(k=>k+':'+st.photos[k].length).join('|');
+    if(sig !== phSig){ phSig = sig; cloudPhotos = {...(st.photos||{})}; D.photos = {...cloudPhotos}; buildPalette(); }
+    Talk.list = st.talk || [];
+    refreshStatus(); refreshOpenModals(); remoteCheck(); render(); renderTalk();
+   });
+   return;
+  }
   let p; try{ p = window.claude && claude.use ? claude.use('db') : null; }catch(e){ p = null; }
   if(!p) return;
   p.then(db=>{
@@ -881,9 +946,12 @@ const Store = {
    }, ()=>{});
   }).catch(()=>{});
  },
- async save(id, name, data){
-  const rec = {name, updated:new Date().toISOString(), eqCount:data.items.filter(i=>i.kind==='eq').length};
-  if(this.mode==='cloud'){
+ async save(id, name, data, upd){
+  const rec = {name, updated:upd||new Date().toISOString(), eqCount:data.items.filter(i=>i.kind==='eq').length};
+  if(this.mode==='qms'){
+   const d = {...data}; delete d.photos;
+   await QB.save(id, {...rec, data:JSON.stringify(d)});
+  }else if(this.mode==='cloud'){
    const d = {...data}; delete d.photos;      // 사진은 photos 컬렉션에 따로 저장
    await this.db.collection('layouts').doc(id).set({...rec, data:JSON.stringify(d)});
   }else{
@@ -893,14 +961,17 @@ const Store = {
   }
  },
  async remove(id){
-  if(this.mode==='cloud') await this.db.collection('layouts').doc(id).delete();
+  if(this.mode==='qms') await QB.remove(id);
+  else if(this.mode==='cloud') await this.db.collection('layouts').doc(id).delete();
   else { const a = this.readLocal().filter(r=>r.id!==id); this.writeLocal(a); this.list = a; }
  },
  get(id){
   const r = this.list.find(r=>r.id===id); if(!r) return null;
-  try{ const d = Object.assign(blank(), JSON.parse(r.data)); if(this.mode==='cloud') d.photos = {...cloudPhotos}; return d; }catch(e){ return null; }
+  if(r.data==null) return null;
+  try{ const d = Object.assign(blank(), JSON.parse(r.data)); if(this.mode!=='local') d.photos = {...cloudPhotos}; return d; }catch(e){ return null; }
  },
  async savePhoto(type, url){
+  if(this.mode==='qms'){ try{ await QB.savePhoto(type, url); }catch(e){ toast(e && e.code==='too_big' ? '사진 용량이 커서 공유 저장 실패' : '사진 공유 저장 실패'); } return; }
   if(this.mode!=='cloud') return;
   try{ const ref = this.db.collection('photos').doc(type); url ? await ref.set({url}) : await ref.delete(); }
   catch(e){ toast(e && e.code==='invalid_argument' ? '사진 용량이 커서 클라우드 저장 실패' : '사진 클라우드 저장 실패'); }
@@ -908,13 +979,18 @@ const Store = {
 };
 function curRec(){ return curId ? Store.list.find(r=>r.id===curId) : null; }
 function refreshStatus(){
- const m = Store.mode==='cloud' ? (Store.ready?'☁ 클라우드':'☁ 연결 중…') : '이 PC 브라우저';
+ const m = Store.mode==='qms' ? (Store.ready?'🔗 QMS 공유':'🔗 QMS 연결 중…') : Store.mode==='cloud' ? (Store.ready?'☁ 클라우드':'☁ 연결 중…') : '이 PC 브라우저';
  const r = curRec();
  $('stat').innerHTML = `${m} · ${r ? esc(r.name) : '저장 안 된 도면'} ${dirty || !r ? '<b>● 수정됨</b>' : '✓ 저장됨'}`;
 }
 function refreshOpenModals(){ if($('mList').classList.contains('on')) renderList(); if($('mCmp').classList.contains('on')){ fillCmpSel(); renderCmp(); } }
-async function saveCurrent(asNew){
+async function saveCurrent(asNew, force){
  if(!Store.ready){ toast('저장소 연결 중입니다. 잠시 후 다시 시도하세요'); return; }
+ // [추가] 내가 연 뒤에 다른 사람이 같은 도면을 저장했으면 덮어쓰기 전에 확인
+ const r0 = curRec();
+ if(!asNew && !force && Store.mode==='qms' && r0 && curUpd && r0.updated!==curUpd){
+  confirmBox(`${r0.by||'다른 사용자'}님이 ${fmtD(r0.updated)}에 이 도면을 저장했습니다. 내 내용으로 덮어쓸까요? (취소 후 "새로 불러오기" 또는 "새 도면으로 저장" 가능)`, ()=>saveCurrent(false, true)); return;
+ }
  let name = (D.title||'').trim() || '이름 없는 도면', id = curId;
  if(asNew || !id || !Store.list.some(r=>r.id===id)){
   id = uid();
@@ -922,31 +998,47 @@ async function saveCurrent(asNew){
  }
  D.title = name; syncHead(); render();
  try{
-  await Store.save(id, name, D);
-  setCur(id); dirty = false; try{ localStorage.setItem('ntl_layout_dirty',''); }catch(e){}
+  const upd = new Date().toISOString(), oldUpd = curUpd, oldCur = curId;
+  setCur(id); curUpd = upd;
+  try{ await Store.save(id, name, D, upd); }catch(e2){ curUpd = oldUpd; setCur(oldCur); throw e2; }
+  dirty = false; hideRemote(); try{ localStorage.setItem('ntl_layout_dirty',''); }catch(e){}
   refreshStatus(); toast(`"${name}" 저장됨`); if($('mList').classList.contains('on')) renderList();
  }catch(e){
-  toast(e && e.code==='local_full' ? '브라우저 저장공간 부족 — 내보내기로 백업하세요'
+  toast(e && e.code==='too_big' ? '도면 용량이 커서 공유 저장 실패 (설비 수를 나눠 저장하세요)' : e && e.code==='local_full' ? '브라우저 저장공간 부족 — 내보내기로 백업하세요'
       : e && e.code==='invalid_argument' ? '도면 용량이 커서 저장 실패' : e && e.code==='quota_exceeded' ? '저장 공간이 가득 찼습니다. 안 쓰는 도면을 삭제하세요' : '저장 실패');
  }
 }
 function openLayout(id){
  const go = ()=>{
-  const d = Store.get(id); if(!d){ toast('도면을 열 수 없습니다'); return; }
-  pushUndo(); loading = true; D = d; setSel(null); setCur(id); syncHead(); buildPalette(); changed(); loading = false;
+  const d = Store.get(id); if(!d){ toast(Store.mode==='qms' ? '도면 내용을 불러오는 중입니다. 잠시 후 다시 누르세요' : '도면을 열 수 없습니다'); return; }
+  const rr = Store.list.find(r=>r.id===id);
+  pushUndo(); loading = true; D = d; setSel(null); setCur(id); curUpd = rr ? rr.updated : null; hideRemote(); Talk.pos = null; Talk.hi = null; syncHead(); buildPalette(); changed(); loading = false;
   dirty = false; try{ localStorage.setItem('ntl_layout_dirty',''); }catch(e){} refreshStatus(); fit(); closeM('mList'); toast(`"${d.title}" 열림`);
  };
  (dirty && id!==curId) ? confirmBox('저장하지 않은 변경이 있습니다. 다른 도면을 열까요?', go) : go();
 }
 const fmtD = t=>{ try{ const d=new Date(t); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; }catch(e){ return ''; } };
 function renderList(){
- $('lsMode').textContent = Store.mode==='cloud'
+ $('lsMode').textContent = Store.mode==='qms'
+  ? 'QMS 공유 시트에 저장됩니다 — QMS를 쓰는 모든 PC·태블릿에서 같은 목록과 의견이 보입니다.'
+  : Store.mode==='cloud'
   ? '클라우드에 저장됩니다 — 이 링크를 여는 PC·태블릿 어디서나 같은 목록이 보입니다.'
   : '이 브라우저에만 저장됩니다 — 다른 PC에서 쓰려면 "내보내기" 파일로 옮기세요.';
+ // [추가] 예전에 이 PC에만 저장한 도면 → 공유로 올리기
+ if(Store.mode==='qms' && Store.ready){
+  const loc = Store.readLocal().filter(l=>!Store.list.some(r=>r.id===l.id));
+  if(loc.length){
+   const b = document.createElement('button'); b.textContent = `이 PC에만 있던 도면 ${loc.length}개 공유로 올리기`; b.style.marginLeft='6px';
+   b.onclick = async ()=>{ b.disabled = true; let n=0;
+    for(const l of loc){ try{ const d = JSON.parse(l.data); delete d.photos; await QB.save(l.id, {name:l.name, updated:l.updated||new Date().toISOString(), eqCount:l.eqCount||0, data:JSON.stringify(d)}); n++; }catch(e){} }
+    toast(`${n}개 공유로 올림`); renderList(); };
+   $('lsMode').appendChild(b);
+  }
+ }
  $('lsName').value = D.title;
  const a = [...Store.list].sort((x,y)=>String(y.updated).localeCompare(String(x.updated)));
  $('lsTbl').innerHTML = '<tr><th>도면</th><th>설비</th><th>수정일</th><th></th></tr>' + (a.length ? a.map(r=>
-  `<tr class="${r.id===curId?'cur':''}"><td><b>${esc(r.name)}</b>${r.id===curId?' <span class="tag" style="background:#f97316">현재</span>':''}</td><td>${r.eqCount??''}대</td><td>${fmtD(r.updated)}</td>
+  `<tr class="${r.id===curId?'cur':''}"><td><b>${esc(r.name)}</b>${r.id===curId?' <span class="tag" style="background:#f97316">현재</span>':''}</td><td>${r.eqCount??''}대</td><td>${fmtD(r.updated)}${r.by?'<br><small class="empty">'+esc(r.by)+'</small>':''}</td>
    <td><button data-open="${r.id}">열기</button> <button data-del="${r.id}" style="color:#dc2626">삭제</button></td></tr>`).join('')
   : '<tr><td colspan="4" class="empty">저장된 도면이 없습니다. 위 "저장"을 누르세요.</td></tr>');
  $('lsTbl').querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>openLayout(b.dataset.open));
@@ -1066,6 +1158,144 @@ $('cPng').onclick = ()=>{
  lines.forEach((t,n)=>{ body += `<text x="${m}" y="${m+34+ph+30+n*20}" font-size="${n?14:16}" font-weight="${n?'normal':'bold'}" fill="${n?'#334155':'#0f172a'}">${esc(t)}</text>`; });
  showPng(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="100%" height="100%" font-family="Malgun Gothic, Apple SD Gothic Neo, Noto Sans KR, sans-serif">${body}</svg>`, W, H, '설비배치_전후비교');
 };
+
+/* ---------- [추가] 전후 비교 → PPT (나란히 · 겹쳐보기 · 변경 내역) ---------- */
+function loadPptx(cb){
+ if(window.PptxGenJS){ cb(window.PptxGenJS); return; }
+ try{ if(window.parent && window.parent!==window && window.parent.qmsPptxLoad_){ window.parent.qmsPptxLoad_(P=>cb(P)); return; } }catch(e){}
+ const s=document.createElement('script'); s.src='https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js';
+ s.onload=()=>cb(window.PptxGenJS||null); s.onerror=()=>cb(null); document.head.appendChild(s);
+}
+function svgToPng(src, w, h){ return new Promise(res=>{
+ const sc = Math.min(2, 3200/Math.max(w,h)); src = src.replace('width="100%" height="100%"', `width="${Math.round(w*sc)}" height="${Math.round(h*sc)}"`);
+ const img = new Image(); img.onload = ()=>{ const c=document.createElement('canvas'); c.width=Math.round(w*sc); c.height=Math.round(h*sc); c.getContext('2d').drawImage(img,0,0); res(c.toDataURL('image/png')); };
+ img.onerror = ()=>res(null); img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(src); }); }
+$('cPpt').onclick = ()=>{
+ if(!cmpLast){ toast('비교할 도면을 선택하세요'); return; }
+ toast('PPT 만드는 중…');
+ loadPptx(async P=>{
+  if(!P){ toast('PPT 라이브러리를 불러오지 못했습니다 (인터넷 연결 확인)'); return; }
+  try{
+  const {A,B,df,va,vb,mk} = cmpLast, F='Malgun Gothic', W=13.333, H=7.5;
+  const sA=staticSvg(A,{marks:mk.mA,legend:true}), sB=staticSvg(B,{marks:mk.mB,legend:true}), sO=staticSvg(B,{marks:mk.over,arrows:mk.arrows,legend:true});
+  const [pA,pB,pO] = await Promise.all([svgToPng(sA.svg,sA.w,sA.h), svgToPng(sB.svg,sB.w,sB.h), svgToPng(sO.svg,sO.w,sO.h)]);
+  const pptx = new P(); pptx.layout='LAYOUT_WIDE'; pptx.title='설비 배치 전후 비교';
+  const today = fmtD(new Date().toISOString()).slice(0,10);
+  const head = (sl,t)=>{ sl.addShape(pptx.ShapeType.rect,{x:0,y:0,w:W,h:0.8,fill:{color:'1E3A5F'},line:{color:'1E3A5F'}}); sl.addText(t,{x:0.4,y:0.1,w:W-3,h:0.6,fontFace:F,fontSize:20,bold:true,color:'FFFFFF',valign:'middle'}); sl.addText(today,{x:W-2.6,y:0.1,w:2.2,h:0.6,fontFace:F,fontSize:11,color:'CBD5E1',align:'right',valign:'middle'}); };
+  const fitImg = (sl,data,r,x,y,w,h)=>{ if(!data) return; let iw=w, ih=w/r; if(ih>h){ ih=h; iw=h*r; } sl.addImage({data, x:x+(w-iw)/2, y:y+(h-ih)/2, w:iw, h:ih}); };
+  const sum = `이전 ${df.na}대 → 이후 ${df.nb}대 · 위치 동일 ${df.same} · 이동 ${cnt(df,'이동')} · 신규 ${cnt(df,'신규')} · 제거 ${cnt(df,'제거')}`;
+  // 1) 나란히
+  let sl = pptx.addSlide(); head(sl,'설비 배치 전후 비교');
+  [[`이전 · ${cmpName(va)}`,pA,sA],[`이후 · ${cmpName(vb)}`,pB,sB]].forEach((o,n)=>{ const x=0.35+n*6.4;
+   sl.addText(o[0],{x,y:0.95,w:6.2,h:0.4,fontFace:F,fontSize:13,bold:true,color:'1E293B',fill:{color:'F1F5F9'}});
+   fitImg(sl,o[1],o[2].w/o[2].h,x,1.4,6.2,5.0); sl.addShape(pptx.ShapeType.rect,{x,y:1.4,w:6.2,h:5.0,fill:{type:'none'},line:{color:'E2E8F0',width:0.75}}); });
+  sl.addText(sum,{x:0.35,y:6.55,w:W-0.7,h:0.4,fontFace:F,fontSize:12,bold:true,color:'0F172A'});
+  sl.addText([{text:'■ 이동 ',options:{color:'F97316'}},{text:'■ 신규 ',options:{color:'16A34A'}},{text:'■ 제거',options:{color:'DC2626'}}],{x:0.35,y:6.95,w:6,h:0.35,fontFace:F,fontSize:10});
+  // 2) 겹쳐보기
+  sl = pptx.addSlide(); head(sl,`겹쳐보기 · ${cmpName(va)} → ${cmpName(vb)}`);
+  fitImg(sl,pO,sO.w/sO.h,0.35,0.95,W-0.7,5.75);
+  sl.addText('회색 점선 = 이전 위치 · 빨간 화살표 = 이동 · 주황 = 이동한 설비 · 초록 = 신규 · 빨강 = 제거',{x:0.35,y:6.85,w:W-0.7,h:0.35,fontFace:F,fontSize:10,color:'475569'});
+  // 3) 변경 내역 (종류별 증감 + 설비별)
+  const th = t=>({text:t,options:{bold:true,fill:{color:'F1F5F9'},align:'center'}});
+  const tTypes = df.types.length ? [[th('설비 종류'),...df.types.map(t=>th(TYPES[t.k].label))],[th('이전'),...df.types.map(t=>({text:String(t.a),options:{align:'center'}}))],[th('이후'),...df.types.map(t=>({text:String(t.b),options:{align:'center'}}))],[th('증감'),...df.types.map(t=>{ const d=t.b-t.a; return {text:(d>0?'+':'')+d,options:{align:'center',bold:!!d,color:d>0?'16A34A':d<0?'DC2626':'94A3B8'}}; })]] : null;
+  const rows = df.rows.map(r=>{ const note = r.k==='이동' ? [r.dist>0.05?`${r1(r.dist)}m 이동`:'', (r.a.rot||0)!==(r.b.rot||0)?`회전 ${r.a.rot||0}°→${r.b.rot||0}°`:''].filter(Boolean).join(', ') : '';
+   return [{text:r.k,options:{bold:true,color:'FFFFFF',fill:{color:KC[r.k].slice(1)},align:'center'}}, {text:eqName(r.b||r.a)}, {text:r.a?zoneOfIn(A,r.a)+' '+pos(r.a):'-'}, {text:r.b?zoneOfIn(B,r.b)+' '+pos(r.b):'-'}, {text:note}]; });
+  const hdr = [th('구분'),th('설비'),th('이전 장소 (위치 m)'),th('이후 장소 (위치 m)'),th('비고')], colW=[1.0,2.4,3.4,3.4,2.4];
+  let i = 0, first = true;
+  do{
+   sl = pptx.addSlide(); head(sl, '설비 변경 내역' + (first?'':' (계속)')); let y = 0.95;
+   if(first){ sl.addText(sum,{x:0.35,y,w:W-0.7,h:0.35,fontFace:F,fontSize:12,bold:true}); y += 0.45;
+    if(tTypes){ const cw=Math.min(1.3,(W-0.7-1.2)/df.types.length); sl.addTable(tTypes,{x:0.35,y,w:1.2+cw*df.types.length,colW:[1.2,...df.types.map(()=>cw)],fontFace:F,fontSize:10,border:{type:'solid',pt:0.5,color:'CBD5E1'},rowH:0.3}); y += 1.4; } }
+   const per = Math.max(4, Math.floor((7.05 - y - 0.3)/0.3));
+   const part = rows.slice(i, i+per); i += per;
+   if(part.length) sl.addTable([hdr,...part],{x:0.35,y,w:colW.reduce((a,b)=>a+b,0),colW,fontFace:F,fontSize:10,border:{type:'solid',pt:0.5,color:'CBD5E1'},rowH:0.3});
+   else if(first) sl.addText('설비 배치 변경 없음',{x:0.35,y,w:6,h:0.4,fontFace:F,fontSize:12,color:'94A3B8'});
+   first = false;
+  }while(i < rows.length);
+  await pptx.writeFile({fileName:`설비배치_전후비교_${today.replace(/-/g,'')}.pptx`});
+  window.__lastPptx = pptx; toast('PPT 다운로드');
+  }catch(e){ toast('PPT 만들기 실패: '+(e&&e.message||e)); }
+ });
+};
+/* ---------- [추가] 의견 (같이 보며 이야기) ---------- */
+const Talk = {list:[], pick:false, pos:null, hi:null, filter:'open'};
+function talkFor(){ return Talk.list.filter(t=>t.lid===curId).sort((a,b)=>String(a.at).localeCompare(String(b.at))); }
+function talkPins(){
+ if(Store.mode!=='qms' || !curId) return '';
+ const L = talkFor(); let g = '';
+ L.forEach((t,n)=>{
+  const x = parseFloat(t.x), y = parseFloat(t.y); if(isNaN(x)||isNaN(y)) return;
+  const done = t.done==='1', on = Talk.hi===t.id, cx = x*S, cy = y*S;
+  if(done && Talk.filter==='open' && !on) return;
+  g += `<g data-talk="${t.id}" style="cursor:pointer"><path d="M${cx} ${cy} l-9 -16 a11 11 0 1 1 18 0 z" fill="${done?'#94a3b8':'#dc2626'}" stroke="${on?'#f97316':'#fff'}" stroke-width="${on?4:2}"/><text x="${cx}" y="${cy-20}" font-size="12" font-weight="bold" text-anchor="middle" fill="#fff" pointer-events="none">${n+1}</text></g>`;
+ });
+ if(Talk.pos) g += `<g pointer-events="none"><circle cx="${Talk.pos.x*S}" cy="${Talk.pos.y*S}" r="14" fill="#f97316" fill-opacity=".25" stroke="#f97316" stroke-width="3" stroke-dasharray="5 3"/><circle cx="${Talk.pos.x*S}" cy="${Talk.pos.y*S}" r="3" fill="#f97316"/></g>`;
+ return g;
+}
+function talkWho(){ let w=''; try{ w = (QB && QB.me && QB.me()) || localStorage.getItem('ntl_layout_who') || ''; }catch(e){} return w; }
+function talkPickOff(){ Talk.pick=false; $('pickTip').classList.remove('on'); $('tpPin').classList.remove('on'); }
+function renderTalk(){
+ const L = curId ? talkFor() : [], open = L.filter(t=>t.done!=='1').length;
+ $('talkN').textContent = (Store.mode==='qms' && open) ? `(${open})` : '';
+ if(!$('talkPanel').classList.contains('on')) return;
+ const r = curRec();
+ $('tpTitle').textContent = r ? r.name : '';
+ if(Store.mode!=='qms'){ $('tpList').innerHTML = '<div class="empty">의견 기능은 QMS 안(기준정보 ▸ 설비 배치도)에서 열었을 때 쓸 수 있습니다.</div>'; $('tpNew').style.display='none'; $('tpCnt').textContent=''; return; }
+ if(!r){ $('tpList').innerHTML = '<div class="empty">먼저 도면을 저장하세요. 저장된 도면에만 의견을 남길 수 있습니다.</div>'; $('tpNew').style.display='none'; $('tpCnt').textContent=''; return; }
+ $('tpNew').style.display='';
+ $('tpCnt').textContent = `미해결 ${open} · 전체 ${L.length}`;
+ const show = L.map((t,n)=>({t,n})).filter(o=>Talk.filter==='all' || o.t.done!=='1' || o.t.id===Talk.hi);
+ $('tpList').innerHTML = show.length ? show.map(({t,n})=>{
+  const done = t.done==='1', pin = t.x!==''&&t.x!=null&&!isNaN(parseFloat(t.x));
+  return `<div class="tp-it ${done?'done':''} ${Talk.hi===t.id?'hi':''}" data-tid="${t.id}"><div class="tp-m"><span class="tp-no">${n+1}</span><b>${esc(t.by||'')}</b><small>${fmtD(t.at)}</small>${pin?'📍':''}</div><div class="tp-t">${esc(t.text)}</div>
+   <div class="tp-a">${pin?'<button data-go>위치로</button>':''}<button data-done>${done?'다시 열기':'✔ 해결'}</button><button data-del style="color:#dc2626">삭제</button></div>${done&&t.doneBy?`<small class="empty">해결: ${esc(t.doneBy)}</small>`:''}</div>`;
+ }).join('') : `<div class="empty">${L.length?'미해결 의견이 없습니다. "전체"를 고르면 해결된 의견도 보입니다.':'아직 의견이 없습니다. 아래에 입력하고, 필요하면 📍로 위치를 찍으세요.'}</div>`;
+ $('tpList').querySelectorAll('[data-tid]').forEach(el=>{
+  const t = Talk.list.find(v=>v.id===el.dataset.tid); if(!t) return;
+  const go = el.querySelector('[data-go]'); if(go) go.onclick = ()=>talkGo(t);
+  el.querySelector('[data-done]').onclick = ()=>{ const d = t.done==='1'; QB.talkSet(t.id, {done:d?'':'1', doneBy:d?'':(talkWho()||'')}); };
+  el.querySelector('[data-del]').onclick = ()=>confirmBox('이 의견을 삭제할까요?', ()=>QB.talkDel(t.id));
+ });
+ $('tpPos').textContent = Talk.pos ? `위치 (${Talk.pos.x}, ${Talk.pos.y})m ✕` : '';
+}
+function talkGo(t){
+ const x = parseFloat(t.x), y = parseFloat(t.y); if(isNaN(x)||isNaN(y)) return;
+ const r = svg.getBoundingClientRect(), wide = window.innerWidth>900 && $('talkPanel').classList.contains('on') ? 340 : 0, tall = window.innerWidth<=900 && $('talkPanel').classList.contains('on') ? window.innerHeight*0.62 : 0;
+ if(view.z < 0.6) view.z = 0.8;
+ view.x = (r.width-wide)/2 - x*S*view.z; view.y = (r.height-tall)/2 - y*S*view.z + 20; Talk.hi = t.id; render(); renderTalk();
+}
+function talkOpenItem(id){ $('talkPanel').classList.add('on'); Talk.hi = id; render(); renderTalk(); const el = $('tpList').querySelector(`[data-tid="${id}"]`); if(el) el.scrollIntoView({block:'nearest'}); }
+$('bTalk').onclick = ()=>{ const p=$('talkPanel'); p.classList.toggle('on'); if(!p.classList.contains('on')){ talkPickOff(); Talk.pos=null; Talk.hi=null; render(); } $('tpWho').value = talkWho(); renderTalk(); };
+$('tpClose').onclick = ()=>{ $('talkPanel').classList.remove('on'); talkPickOff(); Talk.pos=null; Talk.hi=null; render(); };
+$('tpFilter').onchange = e=>{ Talk.filter = e.target.value; render(); renderTalk(); };
+$('tpPin').onclick = ()=>{ if(Talk.pick){ talkPickOff(); return; } Talk.pick = true; $('pickTip').classList.add('on'); $('tpPin').classList.add('on'); if(window.innerWidth<=900) toast('도면에서 위치를 누르세요'); };
+$('tpPos').onclick = ()=>{ Talk.pos=null; render(); renderTalk(); };
+$('tpWho').onchange = e=>{ try{ localStorage.setItem('ntl_layout_who', e.target.value.trim()); }catch(_){} };
+$('tpAdd').onclick = ()=>{
+ const text = $('tpText').value.trim(), who = $('tpWho').value.trim();
+ if(!text){ toast('의견을 입력하세요'); return; }
+ if(!who){ toast('이름을 입력하세요'); $('tpWho').focus(); return; }
+ try{ localStorage.setItem('ntl_layout_who', who); }catch(_){}
+ QB.talkAdd({lid:curId, x:Talk.pos?Talk.pos.x:'', y:Talk.pos?Talk.pos.y:'', text, by:who});
+ $('tpText').value=''; Talk.pos=null; render(); renderTalk(); toast('의견 등록됨 — 다른 사용자 화면에도 곧 보입니다');
+};
+/* ---------- [추가] 다른 사람이 저장한 내용 감지 ---------- */
+function hideRemote(){ $('rbar').classList.remove('on'); }
+function reloadCur(r){
+ const d = Store.get(r.id); if(!d) return;
+ const keep = new Set(selSet); loading = true; D = d; selSet = new Set([...keep].filter(id=>D.items.some(i=>i.id===id))); syncSel(); syncHead(); buildPalette(); changed(); loading = false;
+ dirty = false; try{ localStorage.setItem('ntl_layout_dirty',''); }catch(e){} curUpd = r.updated; hideRemote(); refreshStatus();
+}
+function remoteCheck(){
+ if(Store.mode!=='qms' || !Store.ready) return;
+ const r = curRec(); if(!r || r.data==null || r.stale) return;
+ if(curUpd===null){ if(!dirty){ reloadCur(r); } else curUpd = r.updated; return; }   // 처음 열 때: 공유본이 최신
+ if(r.updated===curUpd) return;
+ if(!dirty){ reloadCur(r); toast(`${r.by||'다른 사용자'}님이 저장한 내용으로 새로 고쳤습니다`); }
+ else { $('rbarT').textContent = `⚠ ${r.by||'다른 사용자'}님이 ${fmtD(r.updated)}에 이 도면을 저장했습니다 (내 화면은 수정 중)`; $('rbar').classList.add('on'); }
+}
+$('rbarLoad').onclick = ()=>{ const r = curRec(); if(!r) return; confirmBox('내가 수정한 내용은 사라집니다. 새로 불러올까요?', ()=>{ pushUndo(); reloadCur(r); toast('새로 불러왔습니다 (Ctrl+Z로 내 수정 되돌리기 가능)'); }); };
+$('rbarHide').onclick = hideRemote;
 
 /* ---------- 시작 ---------- */
 D = load();
