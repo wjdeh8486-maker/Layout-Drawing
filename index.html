@@ -89,6 +89,7 @@ td:last-child,th:last-child{text-align:right}
  <button id="bUndo" title="Ctrl+Z">↶ 되돌리기</button>
  <button id="bSnap">격자맞춤: 켜짐</button>
  <button id="bArt">표시: 그림</button>
+ <button id="bMulti" title="켜면 터치로 여러 개 선택(탭=추가/해제, 빈 곳 드래그=범위 선택)">다중선택: 끔</button>
  <span class="sep"></span>
  <button id="bFit">전체보기</button>
  <button id="bPng">이미지</button>
@@ -120,7 +121,7 @@ td:last-child,th:last-child{text-align:right}
 
 <main id="stage">
  <svg id="svg" xmlns="http://www.w3.org/2000/svg"></svg>
- <div id="hint">클릭=추가 · 드래그=이동 · 모서리=크기 · 빈 곳 드래그=화면이동 · 휠=확대 · Del=삭제 · R=회전 · Ctrl+D=복제</div>
+ <div id="hint">클릭=추가 · 드래그=이동 · 모서리=크기 · 빈 곳 드래그=화면이동 · 휠=확대 · Shift+클릭/드래그=여러 개 선택 · Del=삭제 · R=회전 · Ctrl+D=복제</div>
  <div class="zoombar"><button id="zIn">＋</button><button id="zOut">－</button></div>
 </main>
 
@@ -294,6 +295,11 @@ function doorArt(d, x, y, w, h){
  return a + jamb;
 }
 let D = null, sel = null, snap = true, undo = [];
+let selSet = new Set(), drawSel = selSet, selMode = false;   // 다중 선택
+function setSel(id){ selSet = new Set(id ? [id] : []); sel = id || null; }
+function syncSel(){ selSet = new Set([...selSet].filter(id=>D.items.some(i=>i.id===id))); sel = selSet.size===1 ? [...selSet][0] : null; }
+function selItems(){ return D.items.filter(i=>selSet.has(i.id)); }
+const r2 = v => Math.round(v*100)/100;
 let view = {x:40, y:40, z:1};
 const $ = id => document.getElementById(id);
 const svg = $('svg');
@@ -352,21 +358,21 @@ function addEq(type){
  pushUndo();
  const t = TYPES[type], p = centerPos(t.w,t.h);
  const it = {id:uid(), kind:'eq', type, no:nextNo(type), x:p.x, y:p.y, w:t.w, h:t.h, rot:0, color:t.color, memo:''};
- D.items.push(it); sel = it.id; changed();
+ D.items.push(it); setSel(it.id); changed();
 }
 function addZone(){
  pushUndo();
  const n = D.items.filter(i=>i.kind==='zone').length + 1;
  const p = centerPos(10,8);
  const it = {id:uid(), kind:'zone', name:'장소 '+n, x:p.x, y:p.y, w:10, h:8, rot:0, color:'#dbeafe', memo:''};
- D.items.push(it); sel = it.id; changed();
+ D.items.push(it); setSel(it.id); changed();
 }
 function addDoor(dtype){
  pushUndo();
  const t = DOORS[dtype], n = D.items.filter(i=>i.kind==='door').length + 1;
  const d = {id:uid(), kind:'door', dtype, name:(dtype==='SHUTTER'?'셔터 ':'출입구 ')+n, w:t.w, rot:0, flip:false, color:t.color, memo:''};
  d.h = doorDepth(d); const p = centerPos(d.w, d.h); d.x=p.x; d.y=p.y;
- D.items.push(d); sel = d.id; changed(); toast('벽 근처로 끌면 벽에 자동으로 붙습니다');
+ D.items.push(d); setSel(d.id); changed(); toast('벽 근처로 끌면 벽에 자동으로 붙습니다');
 }
 // 문을 가장 가까운 벽(공장 외벽·장소 경계)에 붙이고 방향 자동 설정
 function snapDoor(i){
@@ -403,11 +409,11 @@ function defsStr(){
  <marker id="arw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#dc2626"/></marker></defs>`;
 }
 function render(){
- svg.innerHTML = defsStr() + `<g id="world" transform="translate(${view.x},${view.y}) scale(${view.z})">${worldInner(D, sel)}</g>`;
+ svg.innerHTML = defsStr() + `<g id="world" transform="translate(${view.x},${view.y}) scale(${view.z})">${worldInner(D, true)}</g>`;
 }
 // 도면 내용(바닥·눈금·항목) — 다른 도면 데이터로도 그릴 수 있게 분리
 function worldInner(data, selId){
- const d0 = D, s0 = sel; D = data; sel = selId;
+ const d0 = D, s0 = drawSel; D = data; drawSel = selId ? selSet : new Set();
  try{
  const W = D.floorW*S, H = D.floorH*S;
  let g = '';
@@ -420,7 +426,7 @@ function worldInner(data, selId){
  const zones = D.items.filter(i=>i.kind==='zone'), eqs = D.items.filter(i=>i.kind==='eq'), doors = D.items.filter(i=>i.kind==='door');
   [...zones, ...eqs, ...doors].forEach(i=>{ g += itemSvg(i); });
  return g;
- } finally { D = d0; sel = s0; }
+ } finally { D = d0; drawSel = s0; }
 }
 // 정적 SVG (이미지·비교용). o.marks=[{i,c,t,dash,fill}], o.arrows=[[x1,y1,x2,y2]](m), o.legend
 function staticSvg(data, o={}){
@@ -456,7 +462,7 @@ function showPng(src, w, h, name){
  img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(src);
 }
 function itemSvg(i){
- const x=i.x*S, y=i.y*S, w=i.w*S, h=i.h*S, cx=x+w/2, cy=y+h/2, on = i.id===sel;
+ const x=i.x*S, y=i.y*S, w=i.w*S, h=i.h*S, cx=x+w/2, cy=y+h/2, on = drawSel.has(i.id);
  let s = `<g data-id="${i.id}" style="cursor:move"><g transform="rotate(${i.rot||0} ${cx} ${cy})">`, post = '';
  if(i.kind==='zone'){
   s += `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${i.color}" fill-opacity=".55" stroke="${on?'#f97316':'#3b82f6'}" stroke-width="${on?3:2}" stroke-dasharray="8 5" rx="2"/>`;
@@ -493,7 +499,7 @@ function itemSvg(i){
   s += `<text x="${cx}" y="${cy+fs*1.05}" font-size="${fs*0.95}" text-anchor="middle" fill="${i.color}" font-weight="bold" pointer-events="none">${esc(i.no)}호기</text>`;
   }
  }
- if(on){
+ if(on && drawSel.size===1){
   s += `<rect data-h="rs" x="${x+w-7}" y="${y+h-7}" width="14" height="14" fill="#fff" stroke="#f97316" stroke-width="2" style="cursor:nwse-resize"/>`;
  }
  return s + `</g>${post}</g>`;
@@ -501,8 +507,9 @@ function itemSvg(i){
 
 /* ---------- 속성 패널 ---------- */
 function renderProp(){
+ if(selSet.size>1){ renderMultiProp(); return; }
  const i = D.items.find(v=>v.id===sel), P = $('prop');
- if(!i){ P.innerHTML = '<div class="empty">설비나 장소를 선택하세요.<br>왼쪽 목록에서 클릭하면 화면 가운데에 추가되고, 호기는 자동으로 다음 번호가 붙습니다.</div>'; return; }
+ if(!i){ P.innerHTML = '<div class="empty">설비나 장소를 선택하세요.<br>왼쪽 목록에서 클릭하면 화면 가운데에 추가되고, 호기는 자동으로 다음 번호가 붙습니다.<br><br><b>여러 개 선택</b><br>· Shift(또는 Ctrl)+클릭: 추가/해제<br>· Shift+드래그: 범위 선택<br>· Ctrl+A: 전체 선택<br>· 태블릿: 상단 "다중선택" 켜기</div>'; return; }
  let h = '';
  if(i.kind==='zone'){
   h += `<label>장소명</label><input id="pName" value="${esc(i.name)}">`;
@@ -546,14 +553,52 @@ function renderProp(){
  $('aRot').onclick = rotateSel; $('aDup').onclick = dupSel; $('aDel').onclick = delSel;
  $('aFront').onclick = ()=>{ pushUndo(); D.items = D.items.filter(v=>v!==i).concat(i); changed(); };
 }
-function rotateSel(){ const i=D.items.find(v=>v.id===sel); if(!i) return; pushUndo(); i.rot=((i.rot||0)+90)%360; changed(); }
+function rotateSel(){ const a=selItems(); if(!a.length) return; pushUndo(); a.forEach(i=>i.rot=((i.rot||0)+90)%360); changed(); }
 function dupSel(){
- const i=D.items.find(v=>v.id===sel); if(!i) return; pushUndo();
- const c = {...i, id:uid(), x:sn(i.x+1), y:sn(i.y+1)};
- if(c.kind==='eq') c.no = nextNo(c.type); else c.name = i.name+' (복사)';
- D.items.push(c); sel=c.id; changed();
+ const a=selItems(); if(!a.length) return; pushUndo(); const ids=[];
+ a.forEach(i=>{
+  const c = {...i, id:uid(), x:sn(i.x+1), y:sn(i.y+1)};
+  if(c.kind==='eq') c.no = nextNo(c.type); else c.name = (i.name||'')+' (복사)';
+  D.items.push(c); ids.push(c.id);
+ });
+ selSet = new Set(ids); syncSel(); changed();
 }
-function delSel(){ const i=D.items.find(v=>v.id===sel); if(!i) return; pushUndo(); D.items=D.items.filter(v=>v!==i); sel=null; changed(); toast('삭제됨 (Ctrl+Z로 되돌리기)'); }
+function delSel(){ const a=selItems(); if(!a.length) return; pushUndo(); D.items=D.items.filter(v=>!selSet.has(v.id)); setSel(null); changed(); toast(`${a.length}개 삭제됨 (Ctrl+Z로 되돌리기)`); }
+// 회전 반영한 실제 차지 영역
+function bbox(i){
+ const rr=(i.rot||0)*Math.PI/180, fw=Math.abs(i.w*Math.cos(rr))+Math.abs(i.h*Math.sin(rr)), fh=Math.abs(i.w*Math.sin(rr))+Math.abs(i.h*Math.cos(rr)), cx=i.x+i.w/2, cy=i.y+i.h/2;
+ return {l:cx-fw/2, r:cx+fw/2, t:cy-fh/2, b:cy+fh/2, cx, cy, fw, fh};
+}
+function alignSel(how){
+ const a=selItems(); if(a.length<2) return; pushUndo();
+ const bs=a.map(bbox), L=Math.min(...bs.map(b=>b.l)), R=Math.max(...bs.map(b=>b.r)), T=Math.min(...bs.map(b=>b.t)), B=Math.max(...bs.map(b=>b.b));
+ if(how==='hd'||how==='vd'){   // 간격 균등
+  const hz = how==='hd', ord = a.map((i,k)=>({i,b:bs[k]})).sort((p,q)=>hz ? p.b.l-q.b.l : p.b.t-q.b.t);
+  const total = ord.reduce((n,o)=>n+(hz?o.b.fw:o.b.fh),0), gap = ((hz?R-L:B-T)-total)/(ord.length-1);
+  let cur = hz ? L : T;
+  ord.forEach(o=>{ const d = cur-(hz?o.b.l:o.b.t); if(hz) o.i.x=r2(o.i.x+d); else o.i.y=r2(o.i.y+d); cur += (hz?o.b.fw:o.b.fh)+gap; });
+ }else a.forEach((i,k)=>{
+  const b=bs[k]; let dx=0, dy=0;
+  if(how==='left') dx=L-b.l; if(how==='right') dx=R-b.r; if(how==='hc') dx=(L+R)/2-b.cx;
+  if(how==='top') dy=T-b.t; if(how==='bottom') dy=B-b.b; if(how==='vc') dy=(T+B)/2-b.cy;
+  i.x=r2(i.x+dx); i.y=r2(i.y+dy);
+ });
+ changed();
+}
+function renderMultiProp(){
+ const a = selItems(), cnt = {};
+ a.forEach(i=>{ const k = i.kind==='eq' ? TYPES[i.type].label : i.kind==='zone' ? '장소' : '문'; cnt[k]=(cnt[k]||0)+1; });
+ $('prop').innerHTML = `<div><b>${a.length}개 선택됨</b><div class="empty">${Object.entries(cnt).map(([k,n])=>`${esc(k)} ${n}`).join(', ')}</div></div>
+  <div class="empty" style="margin-top:6px">선택한 것 중 아무거나 끌면 함께 이동합니다.<br>방향키 0.1m, Shift+방향키 1m 이동</div>
+  <label>정렬 (회전 반영)</label><div class="btns" style="margin-top:2px">
+   <button data-al="left">왼쪽</button><button data-al="hc">가로 가운데</button><button data-al="right">오른쪽</button>
+   <button data-al="top">위쪽</button><button data-al="vc">세로 가운데</button><button data-al="bottom">아래쪽</button>
+   <button data-al="hd">가로 간격 균등</button><button data-al="vd">세로 간격 균등</button></div>
+  <div class="btns"><button id="aRot">↻ 90° (각각)</button><button id="aDup">복제</button><button id="aDel" style="color:#dc2626">삭제</button><button id="aNone">선택 해제</button></div>`;
+ $('prop').querySelectorAll('[data-al]').forEach(b=>b.onclick=()=>alignSel(b.dataset.al));
+ $('aRot').onclick = rotateSel; $('aDup').onclick = dupSel; $('aDel').onclick = delSel;
+ $('aNone').onclick = ()=>{ setSel(null); render(); renderProp(); };
+}
 
 /* ---------- 현황 ---------- */
 function zoneOf(e){ return zoneOfIn(D, e); }
@@ -579,7 +624,7 @@ function renderSummary(){
    list.map(e=>`<a href="#" data-pick="${e.id}" style="color:${e.color};text-decoration:none">${esc(eqName(e))}</a>`).join(', ') + '</div>';
  });
  $('summary').innerHTML = h;
- $('summary').querySelectorAll('[data-pick]').forEach(a=>a.onclick=ev=>{ ev.preventDefault(); sel=a.dataset.pick; render(); renderProp(); });
+ $('summary').querySelectorAll('[data-pick]').forEach(a=>a.onclick=ev=>{ ev.preventDefault(); setSel(a.dataset.pick); render(); renderProp(); });
 }
 function changed(){ render(); renderProp(); renderSummary(); save(); }
 
@@ -611,13 +656,26 @@ svg.addEventListener('pointerdown', e=>{
  }
  const g = e.target.closest('[data-id]');
  const p = toWorld(e.clientX, e.clientY);
+ const add = e.shiftKey || e.ctrlKey || e.metaKey || selMode;
  if(g){
   const i = D.items.find(v=>v.id===g.dataset.id);
-  if(sel!==i.id){ sel=i.id; render(); renderProp(); }
-  pushUndo();
-  act = { mode: e.target.dataset.h==='rs' ? 'resize' : 'move', i, sx:p.x, sy:p.y, ox:i.x, oy:i.y, ow:i.w, oh:i.h, moved:false };
+  if(add && i.kind==='zone'){
+   // 장소 위에서 Shift+드래그 = 범위 선택, 그냥 클릭 = 장소 선택 추가/해제
+   act = {mode:'pending', i, sx:p.x, sy:p.y, base:new Set(selSet)};
+  }else{
+   if(add){
+    if(selSet.has(i.id)){ selSet.delete(i.id); syncSel(); render(); renderProp(); act = null; return; }
+    selSet.add(i.id); syncSel(); render(); renderProp();
+   }else if(!selSet.has(i.id)){ setSel(i.id); render(); renderProp(); }
+   pushUndo();
+   const rs = e.target.dataset.h==='rs' && selSet.size===1;
+   act = { mode: rs ? 'resize' : 'move', i, sx:p.x, sy:p.y, ox:i.x, oy:i.y, ow:i.w, oh:i.h, moved:false,
+           orig: new Map(selItems().map(v=>[v.id,{x:v.x, y:v.y}])) };
+  }
+ }else if(add){
+  act = {mode:'box', sx:p.x, sy:p.y, base:new Set(selSet)};
  }else{
-  if(sel){ sel=null; render(); renderProp(); }
+  if(selSet.size){ setSel(null); render(); renderProp(); }
   act = {mode:'pan', sx:e.clientX, sy:e.clientY, vx:view.x, vy:view.y}; svg.classList.add('panning');
  }
  svg.setPointerCapture(e.pointerId);
@@ -633,6 +691,14 @@ svg.addEventListener('pointermove', e=>{
  if(act.mode==='pan'){ view.x = act.vx + e.clientX - act.sx; view.y = act.vy + e.clientY - act.sy; applyView(); return; }
  const p = toWorld(e.clientX, e.clientY), i = act.i;
  let dx = p.x-act.sx, dy = p.y-act.sy;
+ if(act.mode==='pending'){ if(Math.hypot(dx,dy) > 0.3) act.mode = 'box'; else return; }
+ if(act.mode==='box'){ drawBox(act.sx, act.sy, p.x, p.y); act.ex = p.x; act.ey = p.y; act.moved = true; return; }
+ if(act.mode==='move' && act.orig.size>1){
+  // 여러 개 함께 이동: 잡은 항목 기준으로 격자 맞추고 같은 거리만큼
+  const ddx = sn(act.ox+dx)-act.ox, ddy = sn(act.oy+dy)-act.oy;
+  act.orig.forEach((o,id)=>{ const v = D.items.find(t=>t.id===id); if(v){ v.x = r2(o.x+ddx); v.y = r2(o.y+ddy); } });
+  act.moved = true; schedRender(); return;
+ }
  if(act.mode==='move'){
   i.x = sn(act.ox+dx); i.y = sn(act.oy+dy);
   if(i.kind==='door' && snap) snapDoor(i);
@@ -654,8 +720,30 @@ function endPtr(e){
  if(!act) return;
  if(act.mode==='pinch'){ if(ptrs.size===0) act=null; return; }
  svg.classList.remove('panning');
- if(act.i){ if(act.moved){ renderProp(); renderSummary(); save(); } else undo.pop(); }
+ if(act.mode==='pending'){   // 장소 클릭 → 선택 추가/해제
+  const id = act.i.id; selSet.has(id) ? selSet.delete(id) : selSet.add(id); syncSel(); render(); renderProp(); act = null; return;
+ }
+ if(act.mode==='box'){
+  const bx = $('selbox'); if(bx) bx.remove();
+  if(!act.moved || Math.hypot(act.ex-act.sx, act.ey-act.sy) < 0.2){ if(!selMode) {} else { setSel(null); render(); renderProp(); } act = null; return; }
+  const L=Math.min(act.sx,act.ex), R=Math.max(act.sx,act.ex), T=Math.min(act.sy,act.ey), B=Math.max(act.sy,act.ey);
+  const hit = D.items.filter(i=>{ const b = bbox(i);
+   return i.kind==='zone' ? (b.l>=L && b.r<=R && b.t>=T && b.b<=B) : (b.cx>=L && b.cx<=R && b.cy>=T && b.cy<=B); });
+  selSet = new Set([...act.base, ...hit.map(i=>i.id)]); syncSel(); render(); renderProp();
+  if(hit.length) toast(`${selSet.size}개 선택됨`);
+  act = null; return;
+ }
+ if(act.i){ if(act.moved){ render(); renderProp(); renderSummary(); save(); } else undo.pop(); }
  act = null;
+}
+let rafId = 0;
+function schedRender(){ if(rafId) return; rafId = requestAnimationFrame(()=>{ rafId = 0; render(); }); }
+function drawBox(x1,y1,x2,y2){
+ const w = $('world'); if(!w) return;
+ let b = $('selbox');
+ if(!b){ b = document.createElementNS('http://www.w3.org/2000/svg','rect'); b.id='selbox'; b.setAttribute('fill','#3b82f6'); b.setAttribute('fill-opacity','.1'); b.setAttribute('stroke','#2563eb'); b.setAttribute('stroke-dasharray','6 4'); b.setAttribute('stroke-width', 1.5/view.z); w.appendChild(b); }
+ b.setAttribute('x', Math.min(x1,x2)*S); b.setAttribute('y', Math.min(y1,y2)*S);
+ b.setAttribute('width', Math.abs(x2-x1)*S); b.setAttribute('height', Math.abs(y2-y1)*S);
 }
 svg.addEventListener('pointerup', endPtr);
 svg.addEventListener('pointercancel', endPtr);
@@ -666,19 +754,21 @@ document.addEventListener('keydown', e=>{
  const tag = document.activeElement.tagName;
  if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT') return;
  if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='z'){ e.preventDefault(); doUndo(); return; }
- if(!sel) return;
- const i = D.items.find(v=>v.id===sel); if(!i) return;
+ if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='a'){ e.preventDefault(); selSet = new Set(D.items.map(i=>i.id)); syncSel(); render(); renderProp(); toast(`${selSet.size}개 선택됨`); return; }
+ const a = selItems(); if(!a.length) return;
  if(e.key==='Delete'||e.key==='Backspace'){ e.preventDefault(); delSel(); }
  else if(e.key.toLowerCase()==='r'){ rotateSel(); }
  else if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='d'){ e.preventDefault(); dupSel(); }
  else if(e.key.startsWith('Arrow')){
   e.preventDefault(); pushUndo(); const st = e.shiftKey?1:0.1;
-  if(e.key==='ArrowLeft') i.x=r1(i.x-st); if(e.key==='ArrowRight') i.x=r1(i.x+st);
-  if(e.key==='ArrowUp') i.y=r1(i.y-st); if(e.key==='ArrowDown') i.y=r1(i.y+st);
+  a.forEach(i=>{
+   if(e.key==='ArrowLeft') i.x=r2(i.x-st); if(e.key==='ArrowRight') i.x=r2(i.x+st);
+   if(e.key==='ArrowUp') i.y=r2(i.y-st); if(e.key==='ArrowDown') i.y=r2(i.y+st);
+  });
   changed();
- }else if(e.key==='Escape'){ sel=null; render(); renderProp(); }
+ }else if(e.key==='Escape'){ setSel(null); render(); renderProp(); }
 });
-function doUndo(){ if(!undo.length){ toast('되돌릴 작업 없음'); return; } D = JSON.parse(undo.pop()); if(!D.items.some(i=>i.id===sel)) sel=null; syncHead(); buildPalette(); changed(); }
+function doUndo(){ if(!undo.length){ toast('되돌릴 작업 없음'); return; } D = JSON.parse(undo.pop()); syncSel(); syncHead(); buildPalette(); changed(); }
 
 /* ---------- 상단 버튼 ---------- */
 function syncHead(){ $('bArt').textContent='표시: '+(D.art!==false?'그림':'색상'); $('title').value=D.title; $('floorW').value=D.floorW; $('floorH').value=D.floorH; }
@@ -691,7 +781,7 @@ $('bSnap').onclick = ()=>{ snap=!snap; $('bSnap').textContent='격자맞춤: '+(
 $('bFit').onclick = fit;
 $('zIn').onclick = ()=>zoomAt(1.2); $('zOut').onclick = ()=>zoomAt(1/1.2);
 $('bNew').onclick = ()=>{
- const go = ()=>{ pushUndo(); const ph = D.photos; loading=true; D=blank(); D.photos = Store.mode==='cloud' ? {...cloudPhotos} : (ph||{}); sel=null; setCur(null); syncHead(); buildPalette(); changed(); loading=false; dirty=false; refreshStatus(); fit(); closeM('mList'); };
+ const go = ()=>{ pushUndo(); const ph = D.photos; loading=true; D=blank(); D.photos = Store.mode==='cloud' ? {...cloudPhotos} : (ph||{}); setSel(null); setCur(null); syncHead(); buildPalette(); changed(); loading=false; dirty=false; refreshStatus(); fit(); closeM('mList'); };
  dirty ? confirmBox('저장하지 않은 변경이 있습니다. 새 도면을 시작할까요?', go) : go();
 };
 $('bPrint').onclick = ()=>{ fit(); try{ window.print(); }catch(err){ toast('이 화면에서는 인쇄가 막혀 있습니다. 이미지 저장 후 인쇄하세요.'); } };
@@ -719,7 +809,7 @@ $('jsonOk').onclick = ()=>{
  try{
   const d = JSON.parse($('jsonTxt').value);
   if(!d || !Array.isArray(d.items)) throw 0;
-  pushUndo(); D = Object.assign(blank(), d); sel=null; syncHead(); buildPalette(); changed(); fit(); closeM('mJson'); toast('불러왔습니다');
+  pushUndo(); D = Object.assign(blank(), d); setSel(null); syncHead(); buildPalette(); changed(); fit(); closeM('mJson'); toast('불러왔습니다');
  }catch(e){ toast('형식이 올바르지 않습니다'); }
 };
 
@@ -741,6 +831,8 @@ async function dl(name, data, href){
  toast('저장이 안 되면 복사 또는 이미지 오른쪽 클릭으로 저장하세요');
 }
 $('jsonSave').onclick = ()=>dl((D.title||'배치도')+'.json', $('jsonTxt').value);
+
+$('bMulti').onclick = ()=>{ selMode = !selMode; $('bMulti').textContent = '다중선택: '+(selMode?'켬':'끔'); $('bMulti').style.background = selMode ? '#f97316' : ''; toast(selMode ? '탭=추가/해제, 빈 곳 드래그=범위 선택' : '다중선택 끔'); };
 
 /* ---------- 장비 사진 ---------- */
 const photoIn = document.createElement('input'); photoIn.type='file'; photoIn.accept='image/*'; photoIn.style.display='none'; document.body.appendChild(photoIn);
@@ -841,7 +933,7 @@ async function saveCurrent(asNew){
 function openLayout(id){
  const go = ()=>{
   const d = Store.get(id); if(!d){ toast('도면을 열 수 없습니다'); return; }
-  pushUndo(); loading = true; D = d; sel = null; setCur(id); syncHead(); buildPalette(); changed(); loading = false;
+  pushUndo(); loading = true; D = d; setSel(null); setCur(id); syncHead(); buildPalette(); changed(); loading = false;
   dirty = false; try{ localStorage.setItem('ntl_layout_dirty',''); }catch(e){} refreshStatus(); fit(); closeM('mList'); toast(`"${d.title}" 열림`);
  };
  (dirty && id!==curId) ? confirmBox('저장하지 않은 변경이 있습니다. 다른 도면을 열까요?', go) : go();
