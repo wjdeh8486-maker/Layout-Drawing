@@ -1246,6 +1246,21 @@ $('cPpt').onclick = ()=>{
   }catch(e){ toast('PPT 만들기 실패: '+(e&&e.message||e)); }
  });
 };
+/* ---------- [추가] QMS 문서(PCN 등)에서 배치도 그림·변경 내역 가져가기 ---------- */
+function toJpg(src, w, h, mx){ return new Promise(res=>{ const sc = Math.min(2, (mx||2000)/Math.max(w,h)); src = src.replace('width="100%" height="100%"', `width="${Math.round(w*sc)}" height="${Math.round(h*sc)}"`);
+ const img = new Image(); img.onload = ()=>{ const c=document.createElement('canvas'); c.width=Math.round(w*sc); c.height=Math.round(h*sc); const x=c.getContext('2d'); x.fillStyle='#fff'; x.fillRect(0,0,c.width,c.height); x.drawImage(img,0,0); res(c.toDataURL('image/jpeg',0.86)); };
+ img.onerror = ()=>res(null); img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(src); }); }
+window.layReady_ = ()=>!!Store.ready;
+window.layList_ = ()=>[...Store.list].sort((x,y)=>String(y.updated).localeCompare(String(x.updated))).map(r=>({id:r.id, name:r.name, updated:fmtD(r.updated), eq:r.eqCount, mode:Store.mode}));
+window.layExport_ = async (ida, idb)=>{
+ const A = Store.get(ida); if(!A) throw new Error('도면을 불러오지 못했습니다');
+ if(!idb){ const s = staticSvg(A,{legend:true}); return {img: await toJpg(s.svg, s.w, s.h)}; }
+ const B = Store.get(idb); if(!B) throw new Error('도면을 불러오지 못했습니다');
+ const df = diffLayouts(A,B), mk = cmpMarks(A,B,df), sO = staticSvg(B,{marks:mk.over, arrows:mk.arrows, legend:true});
+ return { img: await toJpg(sO.svg, sO.w, sO.h), na:df.na, nb:df.nb, same:df.same, mv:cnt(df,'이동'), nw:cnt(df,'신규'), rm:cnt(df,'제거'), dup:[...df.dupA, ...df.dupB],
+  rows: df.rows.map(r=>({k:r.k, name:eqName(r.b||r.a), from:r.a?zoneOfIn(A,r.a):'-', to:r.b?zoneOfIn(B,r.b):'-',
+   note: r.k==='이동' ? [r.dist>0.05?`${r1(r.dist)}m 이동`:'', (r.a.rot||0)!==(r.b.rot||0)?`회전 ${r.a.rot||0}°→${r.b.rot||0}°`:''].filter(Boolean).join(', ') : ''})) };
+};
 /* ---------- [추가] 의견 (같이 보며 이야기) ---------- */
 const Talk = {list:[], pick:false, pos:null, hi:null, filter:'open'};
 function talkFor(){ return Talk.list.filter(t=>t.lid===curId).sort((a,b)=>String(a.at).localeCompare(String(b.at))); }
