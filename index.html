@@ -1200,37 +1200,42 @@ $('cPpt').onclick = ()=>{
  loadPptx(async P=>{
   if(!P){ toast('PPT 라이브러리를 불러오지 못했습니다 (인터넷 연결 확인)'); return; }
   try{
-  const {A,B,df,va,vb,mk} = cmpLast, F='Malgun Gothic', W=13.333, H=7.5;
+  let TP=null; try{ TP = (window.parent && window.parent!==window) ? (window.parent.QMS_PPT_TPL||null) : null; }catch(e){}   // [변경] QMS 안에서는 회사 PPT 양식(27.5×19.05cm)
+  const {A,B,df,va,vb,mk} = cmpLast, F = TP ? '굴림' : 'Malgun Gothic', TF = TP ? 'HY헤드라인M' : F, W = TP ? 10.833 : 13.333, H = 7.5, YM = TP ? 6.85 : 7.05;
   const sA=staticSvg(A,{marks:mk.mA,legend:true}), sB=staticSvg(B,{marks:mk.mB,legend:true}), sO=staticSvg(B,{marks:mk.over,arrows:mk.arrows,legend:true});
   const [pA,pB,pO] = await Promise.all([svgToPng(sA.svg,sA.w,sA.h), svgToPng(sB.svg,sB.w,sB.h), svgToPng(sO.svg,sO.w,sO.h)]);
-  const pptx = new P(); pptx.layout='LAYOUT_WIDE'; pptx.title='설비 배치 전후 비교';
+  const pptx = new P(); if(TP){ pptx.defineLayout({name:'NTL_A4W', width:W, height:H}); pptx.layout='NTL_A4W'; } else pptx.layout='LAYOUT_WIDE'; pptx.title='설비 배치 전후 비교'; let pno = 0;
   const today = fmtD(new Date().toISOString()).slice(0,10);
-  const head = (sl,t)=>{ sl.addShape(pptx.ShapeType.rect,{x:0,y:0,w:W,h:0.8,fill:{color:'1E3A5F'},line:{color:'1E3A5F'}}); sl.addText(t,{x:0.4,y:0.1,w:W-3,h:0.6,fontFace:F,fontSize:20,bold:true,color:'FFFFFF',valign:'middle'}); sl.addText(today,{x:W-2.6,y:0.1,w:2.2,h:0.6,fontFace:F,fontSize:11,color:'CBD5E1',align:'right',valign:'middle'}); };
+  const head = (sl,t)=>{ pno++;
+   if(TP){ sl.addImage({data:TP.hdr,x:0,y:0,w:W,h:0.8}); sl.addText(t,{x:0.3,y:0.16,w:6.7,h:0.5,fontFace:TF,fontSize:18,color:'000000',valign:'bottom',fit:'shrink',margin:0});
+    sl.addText('- '+pno+' / -',{x:4.6,y:7.05,w:1.6,h:0.3,fontFace:F,fontSize:10,align:'center',valign:'middle'}); sl.addImage({data:TP.logo,x:8.43,y:6.99,w:2.4,h:0.51}); return; }
+   sl.addShape(pptx.ShapeType.rect,{x:0,y:0,w:W,h:0.8,fill:{color:'1E3A5F'},line:{color:'1E3A5F'}}); sl.addText(t,{x:0.4,y:0.1,w:W-3,h:0.6,fontFace:F,fontSize:20,bold:true,color:'FFFFFF',valign:'middle'}); sl.addText(today,{x:W-2.6,y:0.1,w:2.2,h:0.6,fontFace:F,fontSize:11,color:'CBD5E1',align:'right',valign:'middle'}); };
   const fitImg = (sl,data,r,x,y,w,h)=>{ if(!data) return; let iw=w, ih=w/r; if(ih>h){ ih=h; iw=h*r; } sl.addImage({data, x:x+(w-iw)/2, y:y+(h-ih)/2, w:iw, h:ih}); };
   const sum = `이전 ${df.na}대 → 이후 ${df.nb}대 · 위치 동일 ${df.same} · 이동 ${cnt(df,'이동')} · 신규 ${cnt(df,'신규')} · 제거 ${cnt(df,'제거')}`;
   // 1) 나란히
   let sl = pptx.addSlide(); head(sl,'설비 배치 전후 비교');
-  [[`이전 · ${cmpName(va)}`,pA,sA],[`이후 · ${cmpName(vb)}`,pB,sB]].forEach((o,n)=>{ const x=0.35+n*6.4;
-   sl.addText(o[0],{x,y:0.95,w:6.2,h:0.4,fontFace:F,fontSize:13,bold:true,color:'1E293B',fill:{color:'F1F5F9'}});
-   fitImg(sl,o[1],o[2].w/o[2].h,x,1.4,6.2,5.0); sl.addShape(pptx.ShapeType.rect,{x,y:1.4,w:6.2,h:5.0,fill:{type:'none'},line:{color:'E2E8F0',width:0.75}}); });
-  sl.addText(sum,{x:0.35,y:6.55,w:W-0.7,h:0.4,fontFace:F,fontSize:12,bold:true,color:'0F172A'});
-  sl.addText([{text:'■ 이동 ',options:{color:'F97316'}},{text:'■ 신규 ',options:{color:'16A34A'}},{text:'■ 제거',options:{color:'DC2626'}}],{x:0.35,y:6.95,w:6,h:0.35,fontFace:F,fontSize:10});
+  const PW = (W-0.9)/2, PH = TP ? 4.6 : 5.0;
+  [[`이전 · ${cmpName(va)}`,pA,sA],[`이후 · ${cmpName(vb)}`,pB,sB]].forEach((o,n)=>{ const x=0.35+n*(PW+0.2);
+   sl.addText(o[0],{x,y:0.95,w:PW,h:0.4,fontFace:F,fontSize:12,bold:true,color:'1E293B',fill:{color:'F1F5F9'}});
+   fitImg(sl,o[1],o[2].w/o[2].h,x,1.4,PW,PH); sl.addShape(pptx.ShapeType.rect,{x,y:1.4,w:PW,h:PH,fill:{type:'none'},line:{color:'E2E8F0',width:0.75}}); });
+  sl.addText(sum,{x:0.35,y:1.5+PH,w:W-0.7,h:0.35,fontFace:F,fontSize:12,bold:true,color:'0F172A'});
+  sl.addText([{text:'■ 이동 ',options:{color:'F97316'}},{text:'■ 신규 ',options:{color:'16A34A'}},{text:'■ 제거',options:{color:'DC2626'}}],{x:0.35,y:1.85+PH,w:6,h:0.3,fontFace:F,fontSize:10});
   // 2) 겹쳐보기
   sl = pptx.addSlide(); head(sl,`겹쳐보기 · ${cmpName(va)} → ${cmpName(vb)}`);
-  fitImg(sl,pO,sO.w/sO.h,0.35,0.95,W-0.7,5.75);
-  sl.addText('회색 점선 = 이전 위치 · 빨간 화살표 = 이동 · 주황 = 이동한 설비 · 초록 = 신규 · 빨강 = 제거',{x:0.35,y:6.85,w:W-0.7,h:0.35,fontFace:F,fontSize:10,color:'475569'});
+  fitImg(sl,pO,sO.w/sO.h,0.35,0.95,W-0.7,YM-1.4);
+  sl.addText('회색 점선 = 이전 위치 · 빨간 화살표 = 이동 · 주황 = 이동한 설비 · 초록 = 신규 · 빨강 = 제거',{x:0.35,y:YM-0.4,w:W-0.7,h:0.35,fontFace:F,fontSize:10,color:'475569'});
   // 3) 변경 내역 (종류별 증감 + 설비별)
   const th = t=>({text:t,options:{bold:true,fill:{color:'F1F5F9'},align:'center'}});
   const tTypes = df.types.length ? [[th('설비 종류'),...df.types.map(t=>th(TYPES[t.k].label))],[th('이전'),...df.types.map(t=>({text:String(t.a),options:{align:'center'}}))],[th('이후'),...df.types.map(t=>({text:String(t.b),options:{align:'center'}}))],[th('증감'),...df.types.map(t=>{ const d=t.b-t.a; return {text:(d>0?'+':'')+d,options:{align:'center',bold:!!d,color:d>0?'16A34A':d<0?'DC2626':'94A3B8'}}; })]] : null;
   const rows = df.rows.map(r=>{ const note = r.k==='이동' ? [r.dist>0.05?`${r1(r.dist)}m 이동`:'', (r.a.rot||0)!==(r.b.rot||0)?`회전 ${r.a.rot||0}°→${r.b.rot||0}°`:''].filter(Boolean).join(', ') : '';
    return [{text:r.k,options:{bold:true,color:'FFFFFF',fill:{color:KC[r.k].slice(1)},align:'center'}}, {text:eqName(r.b||r.a)}, {text:r.a?zoneOfIn(A,r.a)+' '+pos(r.a):'-'}, {text:r.b?zoneOfIn(B,r.b)+' '+pos(r.b):'-'}, {text:note}]; });
-  const hdr = [th('구분'),th('설비'),th('이전 장소 (위치 m)'),th('이후 장소 (위치 m)'),th('비고')], colW=[1.0,2.4,3.4,3.4,2.4];
+  const hdr = [th('구분'),th('설비'),th('이전 장소 (위치 m)'),th('이후 장소 (위치 m)'),th('비고')], colW=[1.0,2.4,3.4,3.4,2.4].map(v=>v*(W-0.7)/12.6);
   let i = 0, first = true;
   do{
    sl = pptx.addSlide(); head(sl, '설비 변경 내역' + (first?'':' (계속)')); let y = 0.95;
    if(first){ sl.addText(sum,{x:0.35,y,w:W-0.7,h:0.35,fontFace:F,fontSize:12,bold:true}); y += 0.45;
     if(tTypes){ const cw=Math.min(1.3,(W-0.7-1.2)/df.types.length); sl.addTable(tTypes,{x:0.35,y,w:1.2+cw*df.types.length,colW:[1.2,...df.types.map(()=>cw)],fontFace:F,fontSize:10,border:{type:'solid',pt:0.5,color:'CBD5E1'},rowH:0.3}); y += 1.4; } }
-   const per = Math.max(4, Math.floor((7.05 - y - 0.3)/0.3));
+   const per = Math.max(4, Math.floor((YM - y - 0.3)/0.3));
    const part = rows.slice(i, i+per); i += per;
    if(part.length) sl.addTable([hdr,...part],{x:0.35,y,w:colW.reduce((a,b)=>a+b,0),colW,fontFace:F,fontSize:10,border:{type:'solid',pt:0.5,color:'CBD5E1'},rowH:0.3});
    else if(first) sl.addText('설비 배치 변경 없음',{x:0.35,y,w:6,h:0.4,fontFace:F,fontSize:12,color:'94A3B8'});
